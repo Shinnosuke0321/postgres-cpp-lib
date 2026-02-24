@@ -6,12 +6,20 @@
 #include <database/connection.h>
 #include <memory>
 #include <libpq-fe.h>
-#include <drogon/HttpAppFramework.h>
 #include <utility>
+#include <optional>
+#include <cstdlib>
 #include <sys/poll.h>
 #include "postgres_error.h"
 #include <expected>
 #include <random>
+#include <format>
+#include <functional>
+#include <mutex>
+#include <condition_variable>
+#include <thread>
+#include <future>
+#include <deque>
 
 namespace Database {
     inline std::optional<std::string> GetDatabaseUrl() {

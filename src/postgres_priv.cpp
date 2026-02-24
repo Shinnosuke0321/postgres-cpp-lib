@@ -33,9 +33,9 @@ namespace Database {
                         std::vector<std::string> empty_params{};
                         auto timeout = std::chrono::milliseconds(5000);
                         if (auto heart_beat = execute_with_retry(std::string(heartbeat_query), empty_params, timeout)) {
-                            LOG_DEBUG << "Postgres: heartbeat successful";
+                            // LOG_DEBUG << "Postgres: heartbeat successful";
                         } else {
-                            LOG_ERROR << "Postgres: heartbeat failed: " << heart_beat.error().to_str();
+                            // LOG_ERROR << "Postgres: heartbeat failed: " << heart_beat.error().to_str();
                         }
                         next_heartbeat = std::chrono::steady_clock::now() + std::chrono::seconds(heartbeat_sec(rng));
                         continue;
@@ -73,7 +73,7 @@ namespace Database {
     std::expected<UniquePostgresResult, PostgresErr> Postgres::execute_with_retry(const std::string &query, const std::vector<std::string> &params, const std::chrono::milliseconds reconnect_timeout) const noexcept {
         for (int attempts = 1; attempts <= 2; ++attempts) {
             if (!is_connected()) {
-                LOG_DEBUG << "Connection is dead";
+                // LOG_DEBUG << "Connection is dead";
                 if (std::optional<PostgresErr> error = attempt_reconnect(reconnect_timeout)) {
                     return std::unexpected(*error);
                 }
@@ -141,7 +141,7 @@ namespace Database {
 
         const auto deadline = std::chrono::steady_clock::now() + timeout;
 
-        LOG_DEBUG << "Attempting to reconnect";
+        // LOG_DEBUG << "Attempting to reconnect";
         while (true) {
             const auto now = std::chrono::steady_clock::now();
             if (now >= deadline)
@@ -153,7 +153,7 @@ namespace Database {
                     const char* err = PQerrorMessage(m_connection.get());
                     return PostgresErr::FailedToReconnect(err ? err :"PQsetnonblocking failed");
                 }
-                LOG_DEBUG << "Reconnected";
+                // LOG_DEBUG << "Reconnected";
                 return std::nullopt;
             }
             if (st == PGRES_POLLING_FAILED)
