@@ -4,6 +4,7 @@
 #pragma once
 #include <expected>
 #include <string>
+#include <memory>
 
 namespace Core::Database {
     struct IConnection {
