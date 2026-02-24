@@ -29,7 +29,7 @@ target_link_libraries(PostgresLib PUBLIC
 )
 
 add_subdirectory(vendor/core)
-target_link_libraries(PostgresLib PRIVATE
+target_link_libraries(PostgresLib PUBLIC
         DbConnectionPool::DbConnectionPool
 )
 
