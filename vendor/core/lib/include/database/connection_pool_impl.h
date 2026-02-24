@@ -86,7 +86,7 @@ namespace Core::Database {
         while (!m_pool_ready.load(std::memory_order_acquire)) {
             m_pool_ready.wait(false, std::memory_order_acquire);
         }
-        //LOG_INFO << "Connection pool is warmup";
+        LOG_INFO << "Connection pool is warmup";
     }
 
     template<class T> requires std::derived_from<T, IConnection>
