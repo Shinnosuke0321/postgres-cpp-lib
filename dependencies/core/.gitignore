@@ -1,0 +1,36 @@
+# CMake build directories
+cmake-build-*/
+build/
+out/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# C++ compiled objects and libraries
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+
+# IDE - CLion / IntelliJ
+.idea/
+
+# macOS
+.DS_Store
+
+# Visual Studio Code
+.vscode/
+
+# Backup and temporary files
+*~
+*.swp
+*.swo
+*.tmp
