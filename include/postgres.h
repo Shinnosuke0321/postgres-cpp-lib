@@ -28,31 +28,40 @@ namespace Database {
         if (!db_url || db_url[0] == '\0')
             return std::nullopt;
 
-        std::string conn_str = std::format("{}"
-                                           "&keepalives=1"
+        std::string url(db_url);
+        if (url.back() == '?' || url.back() == '&') {
+            std::string conn_str = std::format("{}"
+                                           "keepalives=1"
                                            "&keepalives_idle=30"
                                            "&keepalives_interval=10"
-                                           "&keepalives_count=5", db_url);
+                                           "&keepalives_count=5", std::move(url));
+            return std::move(conn_str);
+        }
+        std::string conn_str = std::format("{}"
+                                           "?keepalives=1"
+                                           "&keepalives_idle=30"
+                                           "&keepalives_interval=10"
+                                           "&keepalives_count=5", std::move(url));
         return std::move(conn_str);
     }
 
-    struct PostgresConnDeleter {
+    struct PGConnDeleter {
         void operator()(PGconn* conn) const noexcept {
             if (conn) {
                 PQfinish(conn);
             }
         }
     };
-    struct PostgresResultDeleter {
+    struct PGResultDeleter {
         void operator()(PGresult* result) const noexcept {
             if (result) {
                 PQclear(result);
             }
         }
     };
-    using UniquePostgresConn = std::unique_ptr<PGconn, PostgresConnDeleter>;
-    using UniquePostgresResult = std::unique_ptr<PGresult, PostgresResultDeleter>;
-    using ResultCallback = std::function<void(UniquePostgresResult)>;
+    using UniquePGConn = std::unique_ptr<PGconn, PGConnDeleter>;
+    using UniquePGResult = std::unique_ptr<PGresult, PGResultDeleter>;
+    using ResultCallback = std::function<void(UniquePGResult)>;
     using ErrorCallback = std::function<void(const PostgresErr &)>;
 
     class Postgres final: public Core::Database::IConnection {
@@ -63,12 +72,18 @@ namespace Database {
         Postgres(std::string&& uri, bool heartbeat_enabled);
         ~Postgres() override;
 
-        Postgres(Postgres&) = delete;
-        Postgres& operator=(Postgres&) = delete;
+        Postgres() = delete;
+        Postgres(const Postgres&) = delete;
+        Postgres& operator=(const Postgres&) = delete;
         Postgres(Postgres&& other) noexcept = delete;
         Postgres& operator=(Postgres&& other) noexcept = delete;
 
-        std::future<std::expected<UniquePostgresResult, PostgresErr>> execute(std::string_view query, std::vector<std::string>&& params) const;
+        std::future<std::expected<UniquePGResult, PostgresErr>> execute(std::string_view query, std::vector<std::string>&& params) const;
+        template<typename ...Args>
+        std::future<std::expected<UniquePGResult, PostgresErr>> execute(std::string_view query, Args&& ...params) const {
+            std::size_t n = sizeof...(params);
+
+        }
         void execute_async(std::string_view query,ResultCallback&& callback,ErrorCallback&& err_callback, std::vector<std::string>&& params) const noexcept;
     private:
         struct PGRequest {
@@ -81,17 +96,17 @@ namespace Database {
         std::expected<void, Core::Database::ConnectionError> connect() noexcept;
         bool is_connected() const noexcept;
         std::optional<PostgresErr> attempt_reconnect(std::chrono::milliseconds timeout) const noexcept;
-        std::expected<UniquePostgresResult, PostgresErr> execute_with_retry(const std::string& query, const std::vector<std::string>& params, std::chrono::milliseconds reconnect_timeout) const noexcept;
-        std::expected<UniquePostgresResult, PostgresErr> execute_query(const std::string& query, const std::vector<std::string>& params) const noexcept;
+        std::expected<UniquePGResult, PostgresErr> execute_with_retry(const std::string& query, const std::vector<std::string>& params, std::chrono::milliseconds reconnect_timeout) const noexcept;
+        std::expected<UniquePGResult, PostgresErr> execute_query(const std::string& query, const std::vector<std::string>& params) const noexcept;
         void query_worker(const std::stop_token &st) const noexcept;
         std::expected<void, PostgresErr> CheckForPollOut(const int& socket) const noexcept;
         std::expected<void, PostgresErr> CheckForPollIn(const int& socket) const noexcept;
-        std::expected<UniquePostgresResult, PostgresErr> consume_result() const noexcept;
+        std::expected<UniquePGResult, PostgresErr> consume_result() const noexcept;
 
     private:
         std::string m_uri;
         bool m_heartbeat_enabled = false;
-        UniquePostgresConn m_connection = nullptr;
+        UniquePGConn m_connection = nullptr;
         mutable std::mutex m_mutex;
         mutable std::condition_variable m_cv;
         mutable std::deque<PGRequest> m_requests;

@@ -61,7 +61,7 @@ namespace Database {
                 m_requests.pop_front();
             }
 
-            std::expected<UniquePostgresResult, PostgresErr> result = execute_with_retry(request.query, request.params, std::chrono::milliseconds(5000));
+            std::expected<UniquePGResult, PostgresErr> result = execute_with_retry(request.query, request.params, std::chrono::milliseconds(5000));
             if (!result) {
                 request.on_error(result.error());
                 continue;
@@ -70,7 +70,7 @@ namespace Database {
         }
     }
 
-    std::expected<UniquePostgresResult, PostgresErr> Postgres::execute_with_retry(const std::string &query, const std::vector<std::string> &params, const std::chrono::milliseconds reconnect_timeout) const noexcept {
+    std::expected<UniquePGResult, PostgresErr> Postgres::execute_with_retry(const std::string &query, const std::vector<std::string> &params, const std::chrono::milliseconds reconnect_timeout) const noexcept {
         for (int attempts = 1; attempts <= 2; ++attempts) {
             if (!is_connected()) {
                 // LOG_DEBUG << "Connection is dead";
@@ -79,7 +79,7 @@ namespace Database {
                 }
             }
 
-            std::expected<UniquePostgresResult, PostgresErr> exe_res = execute_query(query, params);
+            std::expected<UniquePGResult, PostgresErr> exe_res = execute_query(query, params);
             if (exe_res) {
                 return exe_res;
             }
@@ -95,7 +95,7 @@ namespace Database {
         return std::unexpected(PostgresErr::QueryFailed("unreachable"));
     }
 
-    std::expected<UniquePostgresResult, PostgresErr> Postgres::execute_query(const std::string& query, const std::vector<std::string> &params) const noexcept {
+    std::expected<UniquePGResult, PostgresErr> Postgres::execute_query(const std::string& query, const std::vector<std::string> &params) const noexcept {
         const int sock = PQsocket(m_connection.get());
         if (sock < 0) {
             return std::unexpected(PostgresErr::SocketFailed("failed to get socket"));
@@ -224,10 +224,10 @@ namespace Database {
         }
     }
 
-    std::expected<UniquePostgresResult, PostgresErr> Postgres::consume_result() const noexcept {
-        UniquePostgresResult result = nullptr;
+    std::expected<UniquePGResult, PostgresErr> Postgres::consume_result() const noexcept {
+        UniquePGResult result = nullptr;
         while (PGresult* r = PQgetResult(m_connection.get())) {
-            UniquePostgresResult temp(r);
+            UniquePGResult temp(r);
             const auto st = PQresultStatus(temp.get());
             if (st == PGRES_TUPLES_OK || st == PGRES_COMMAND_OK) {
                 if (!result)
@@ -253,7 +253,7 @@ namespace Database {
         if (!raw_conn) {
             return std::unexpected(ConnectionError::ConnectionFailed("Postgres connection failed"));
         }
-        UniquePostgresConn unique_conn(raw_conn);
+        UniquePGConn unique_conn(raw_conn);
         if (PQstatus(unique_conn.get()) != CONNECTION_OK) {
             return std::unexpected(ConnectionError::ConnectionFailed(PQerrorMessage(unique_conn.get())));
         }

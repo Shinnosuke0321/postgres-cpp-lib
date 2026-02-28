@@ -28,8 +28,13 @@ target_link_libraries(PostgresLib PUBLIC
         PostgreSQL::PostgreSQL
 )
 
-add_subdirectory(vendor/core)
+add_subdirectory(dependencies/core)
 target_link_libraries(PostgresLib PUBLIC
         DbConnectionPool::DbConnectionPool
 )
+
+include(CTest)
+if (PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
+    add_subdirectory(tests)
+endif ()
 

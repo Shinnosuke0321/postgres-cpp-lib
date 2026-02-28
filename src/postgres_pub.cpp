@@ -32,14 +32,14 @@ namespace Database {
             m_worker_thread.join();
     }
 
-    std::future<std::expected<UniquePostgresResult, PostgresErr>> Postgres::execute(const std::string_view query, std::vector<std::string>&& params) const {
-        using Result = std::expected<UniquePostgresResult, PostgresErr>;
+    std::future<std::expected<UniquePGResult, PostgresErr>> Postgres::execute(const std::string_view query, std::vector<std::string>&& params) const {
+        using Result = std::expected<UniquePGResult, PostgresErr>;
         auto prom = std::make_shared<std::promise<Result>>();
         auto future = prom->get_future();
         PGRequest request{};
         request.query = std::string(query);
         request.params = std::move(params);
-        request.on_success = [prom](UniquePostgresResult reply) {
+        request.on_success = [prom](UniquePGResult reply) {
             try {
                 prom->set_value(std::move(reply));
             } catch (...) {}
