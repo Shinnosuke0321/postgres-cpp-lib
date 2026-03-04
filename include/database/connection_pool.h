@@ -20,15 +20,15 @@ namespace Core::Database {
     class ConnectionPool: public RefCounted<ConnectionPool<T>> {
     public:
         struct PoolConfig {
-            std::size_t max_size = 30;
+            std::size_t max_size = std::thread::hardware_concurrency();
             std::size_t init_size = 10;
             bool is_eager = false;
         };
     public:
-        using Factory = std::shared_ptr<ConnectionFactory>;
+        using SharedFactory = std::shared_ptr<ConnectionFactory>;
         using AcquireResult = std::expected<ConnectionManager<T>, ConnectionError>;
 
-        explicit ConnectionPool(Factory factory, const PoolConfig& opt = PoolConfig()) noexcept;
+        explicit ConnectionPool(SharedFactory factory, const PoolConfig& opt = PoolConfig()) noexcept;
         ~ConnectionPool() override;
 
         AcquireResult acquire(std::chrono::seconds timeout = std::chrono::seconds{3}) noexcept;
