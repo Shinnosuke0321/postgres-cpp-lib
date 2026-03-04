@@ -48,3 +48,6 @@ _deps/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# bash script
+pull-subtree.sh
