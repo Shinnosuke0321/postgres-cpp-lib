@@ -19,7 +19,7 @@ namespace Core::Database {
         else {
             const auto init = m_config.init_size;
             const auto max  = m_config.max_size;
-            if (m_config.max_size > m_config.init_size) {
+            if (max > init) {
                 if (!m_capacity_expanded.exchange(true, std::memory_order_acq_rel)) {
                     m_capacity.release(static_cast<std::ptrdiff_t>(max - init));
                 }

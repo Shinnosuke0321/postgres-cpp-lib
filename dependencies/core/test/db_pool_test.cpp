@@ -26,8 +26,6 @@ TEST(ConnectionPoolTest, PoolTest) {
     });
 
     Core::Database::ConnectionPool<FakeConn>::PoolConfig cfg;
-    cfg.init_size = 1;
-    cfg.max_size = 1;
     cfg.is_eager = true;
 
     auto pool = std_ex::make_intrusive<Core::Database::ConnectionPool<FakeConn>>(factory, cfg);
