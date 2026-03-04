@@ -1,7 +1,7 @@
 //
 // Created by Shinnosuke Kawai on 4/19/25.
 //
-#include "postgres.h"
+#include "database/postgres.h"
 
 
 namespace Database {
@@ -31,42 +31,25 @@ namespace Database {
         if (m_worker_thread.joinable())
             m_worker_thread.join();
     }
-
-    std::future<std::expected<UniquePGResult, PostgresErr>> Postgres::execute(const std::string_view query, std::vector<std::string>&& params) const {
-        using Result = std::expected<UniquePGResult, PostgresErr>;
-        auto prom = std::make_shared<std::promise<Result>>();
-        auto future = prom->get_future();
-        PGRequest request{};
-        request.query = std::string(query);
-        request.params = std::move(params);
-        request.on_success = [prom](UniquePGResult reply) {
-            try {
-                prom->set_value(std::move(reply));
-            } catch (...) {}
-        };
-        request.on_error = [prom](const PostgresErr& err) {
-            try {
-                prom->set_value(std::unexpected(err));
-            } catch (...) {}
-        };
-        {
-            std::lock_guard sl(m_mutex);
-            m_requests.push_back(std::move(request));
+    std::expected<void, Core::Database::ConnectionError> Postgres::connect() noexcept {
+        using Core::Database::ConnectionError;
+        PGconn* raw_conn = PQconnectdb(m_uri.c_str());
+        if (!raw_conn) {
+            return std::unexpected(ConnectionError::ConnectionFailed("Postgres connection failed"));
         }
-        m_cv.notify_one();
-        return future;
+        UniquePGConn unique_conn(raw_conn);
+        if (PQstatus(unique_conn.get()) != CONNECTION_OK) {
+            return std::unexpected(ConnectionError::ConnectionFailed(PQerrorMessage(unique_conn.get())));
+        }
+        if (PQsetnonblocking(unique_conn.get(), 1) != 0) {
+            return std::unexpected(ConnectionError::SocketFailed(PQerrorMessage(unique_conn.get())));
+        }
+        m_connection = std::move(unique_conn);
+        m_worker_thread = std::jthread([this](const std::stop_token &stop_token) mutable {QueryWorker(stop_token);});
+        return {};
     }
-    void Postgres::execute_async(const std::string_view query, ResultCallback &&callback, ErrorCallback &&err_callback, std::vector<std::string>&& params) const noexcept
-    {
-        PGRequest request{};
-        request.query = std::string(query);
-        request.params = std::move(params);
-        request.on_success = std::move(callback);
-        request.on_error = std::move(err_callback);
-        {
-            std::lock_guard sl(m_mutex);
-            m_requests.push_back(std::move(request));
-        }
-        m_cv.notify_one();
+
+    bool Postgres::is_connected() const noexcept {
+        return m_connection.get() && PQstatus(m_connection.get()) == CONNECTION_OK;
     }
 }

@@ -1,25 +1,39 @@
 //
 // Created by Shinnosuke Kawai on 1/26/26.
 //
-#include "postgres.h"
+#include <print>
+#include "database/postgres.h"
 
 namespace Database {
-    static void PrepareQueryParams(const std::vector<std::string>& params, std::vector<const char*>& argc, std::vector<int>& arg_lengths, int& n_params) {
-        n_params = static_cast<int>(params.size());
-        argc.reserve(n_params);
-        arg_lengths.reserve(n_params);
-        for (const auto& args : params) {
-            argc.push_back(args.data());
-            arg_lengths.push_back(static_cast<int>(args.size()));
+    std::future<std::expected<UniquePGResult, PostgresErr>> Postgres::SendToWorker(PgParamDetail&& query_detail) const {
+        using Result = std::expected<UniquePGResult, PostgresErr>;
+        auto prom = std::make_shared<std::promise<Result>>();
+        auto future = prom->get_future();
+        PGRequest request{std::move(query_detail)};
+        request.on_success = [prom](UniquePGResult reply) {
+            try {
+                prom->set_value(std::move(reply));
+            } catch (...) {}
+        };
+        request.on_error = [prom](const PostgresErr& err) {
+            try {
+                prom->set_value(std::unexpected(err));
+            } catch (...) {}
+        };
+        {
+            std::lock_guard sl(m_mutex);
+            m_requests.push_back(std::move(request));
         }
+        m_cv.notify_one();
+        return future;
     }
 
-    void Postgres::query_worker(const std::stop_token &st) const noexcept {
+    void Postgres::QueryWorker(const std::stop_token &st) const noexcept {
         std::mt19937 rng(std::random_device{}());
         std::uniform_int_distribution heartbeat_sec(60, 120);
         auto next_heartbeat = std::chrono::steady_clock::now() + std::chrono::seconds(heartbeat_sec(rng));
         while (!st.stop_requested()) {
-            PGRequest request{};
+            PGRequest request;
             {
                 std::unique_lock sl(m_mutex);
                 if (!m_heartbeat_enabled) {
@@ -32,10 +46,11 @@ namespace Database {
                         constexpr std::string_view heartbeat_query = "SELECT 1";
                         std::vector<std::string> empty_params{};
                         auto timeout = std::chrono::milliseconds(5000);
-                        if (auto heart_beat = execute_with_retry(std::string(heartbeat_query), empty_params, timeout)) {
-                            // LOG_DEBUG << "Postgres: heartbeat successful";
+                        PgParamDetail ping_detail{heartbeat_query, 0};
+                        if (auto heart_beat = ExecuteWithRetry(ping_detail, timeout)) {
+                            std::println("Postgres: heartbeat successful");
                         } else {
-                            // LOG_ERROR << "Postgres: heartbeat failed: " << heart_beat.error().to_str();
+                            std::println("Postgres: heartbeat failed");
                         }
                         next_heartbeat = std::chrono::steady_clock::now() + std::chrono::seconds(heartbeat_sec(rng));
                         continue;
@@ -61,7 +76,7 @@ namespace Database {
                 m_requests.pop_front();
             }
 
-            std::expected<UniquePGResult, PostgresErr> result = execute_with_retry(request.query, request.params, std::chrono::milliseconds(5000));
+            std::expected<UniquePGResult, PostgresErr> result = ExecuteWithRetry(request.detail,std::chrono::milliseconds(5000));
             if (!result) {
                 request.on_error(result.error());
                 continue;
@@ -70,22 +85,22 @@ namespace Database {
         }
     }
 
-    std::expected<UniquePGResult, PostgresErr> Postgres::execute_with_retry(const std::string &query, const std::vector<std::string> &params, const std::chrono::milliseconds reconnect_timeout) const noexcept {
+    std::expected<UniquePGResult, PostgresErr> Postgres::ExecuteWithRetry(const PgParamDetail& param_detail, const std::chrono::milliseconds reconnect_timeout) const noexcept {
         for (int attempts = 1; attempts <= 2; ++attempts) {
             if (!is_connected()) {
                 // LOG_DEBUG << "Connection is dead";
-                if (std::optional<PostgresErr> error = attempt_reconnect(reconnect_timeout)) {
+                if (std::optional<PostgresErr> error = AttemptReconnect(reconnect_timeout)) {
                     return std::unexpected(*error);
                 }
             }
 
-            std::expected<UniquePGResult, PostgresErr> exe_res = execute_query(query, params);
+            std::expected<UniquePGResult, PostgresErr> exe_res = ExecuteQuery(param_detail);
             if (exe_res) {
                 return exe_res;
             }
             PostgresErr& err = exe_res.error();
             if (err.get_type() == PostgresErr::Type::BadConnection && attempts == 1) {
-                if (auto error = attempt_reconnect(reconnect_timeout)) {
+                if (auto error = AttemptReconnect(reconnect_timeout)) {
                     return std::unexpected(*error);
                 }
                 continue;
@@ -95,25 +110,21 @@ namespace Database {
         return std::unexpected(PostgresErr::QueryFailed("unreachable"));
     }
 
-    std::expected<UniquePGResult, PostgresErr> Postgres::execute_query(const std::string& query, const std::vector<std::string> &params) const noexcept {
+    std::expected<UniquePGResult, PostgresErr> Postgres::ExecuteQuery(const PgParamDetail& param_detail) const noexcept {
         const int sock = PQsocket(m_connection.get());
         if (sock < 0) {
             return std::unexpected(PostgresErr::SocketFailed("failed to get socket"));
         }
-
-        std::vector<const char*> argc;
-        std::vector<int> arg_lengths;
-        int n_params = 0;
-        PrepareQueryParams(params, argc, arg_lengths, n_params);
+        // PrepareQueryParams(params, argc, arg_lengths, n_params);
 
         const int ok = PQsendQueryParams(
             m_connection.get(),
-            query.c_str(),
-            n_params,
+            param_detail.query.c_str(),
+            param_detail.count(),
             nullptr,
-            argc.data(),
-            arg_lengths.data(),
-            nullptr,
+            param_detail.buffers.data(),
+            param_detail.lengths.data(),
+            param_detail.formats.data(),
             0);
 
         if (ok == 0) {
@@ -128,14 +139,10 @@ namespace Database {
             return std::unexpected(poll_in.error());
         }
 
-        return consume_result();
+        return ConsumeResult();
     }
 
-    bool Postgres::is_connected() const noexcept {
-        return m_connection.get() && PQstatus(m_connection.get()) == CONNECTION_OK;
-    }
-
-    std::optional<PostgresErr> Postgres::attempt_reconnect(const std::chrono::milliseconds timeout) const noexcept {
+    std::optional<PostgresErr> Postgres::AttemptReconnect(const std::chrono::milliseconds timeout) const noexcept {
         if (!PQresetStart(m_connection.get()))
             return PostgresErr::FailedToReconnect("PQresetStart failed");
 
@@ -224,7 +231,7 @@ namespace Database {
         }
     }
 
-    std::expected<UniquePGResult, PostgresErr> Postgres::consume_result() const noexcept {
+    std::expected<UniquePGResult, PostgresErr> Postgres::ConsumeResult() const noexcept {
         UniquePGResult result = nullptr;
         while (PGresult* r = PQgetResult(m_connection.get())) {
             UniquePGResult temp(r);
@@ -245,23 +252,5 @@ namespace Database {
             return std::unexpected(PostgresErr::QueryFailed("no results received"));
         }
         return std::move(result);
-    }
-
-    std::expected<void, Core::Database::ConnectionError> Postgres::connect() noexcept {
-        using Core::Database::ConnectionError;
-        PGconn* raw_conn = PQconnectdb(m_uri.c_str());
-        if (!raw_conn) {
-            return std::unexpected(ConnectionError::ConnectionFailed("Postgres connection failed"));
-        }
-        UniquePGConn unique_conn(raw_conn);
-        if (PQstatus(unique_conn.get()) != CONNECTION_OK) {
-            return std::unexpected(ConnectionError::ConnectionFailed(PQerrorMessage(unique_conn.get())));
-        }
-        if (PQsetnonblocking(unique_conn.get(), 1) != 0) {
-            return std::unexpected(ConnectionError::SocketFailed(PQerrorMessage(unique_conn.get())));
-        }
-        m_connection = std::move(unique_conn);
-        m_worker_thread = std::jthread([this](const std::stop_token &stop_token) mutable {query_worker(stop_token);});
-        return {};
     }
 }

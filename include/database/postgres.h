@@ -20,6 +20,8 @@
 #include <thread>
 #include <future>
 #include <deque>
+#include <variant>
+#include "internal/type_detail.h"
 
 namespace Database {
     inline std::optional<std::string> GetDatabaseUrl() {
@@ -78,30 +80,71 @@ namespace Database {
         Postgres(Postgres&& other) noexcept = delete;
         Postgres& operator=(Postgres&& other) noexcept = delete;
 
-        std::future<std::expected<UniquePGResult, PostgresErr>> execute(std::string_view query, std::vector<std::string>&& params) const;
-        template<typename ...Args>
-        std::future<std::expected<UniquePGResult, PostgresErr>> execute(std::string_view query, Args&& ...params) const {
-            std::size_t n = sizeof...(params);
-
-        }
-        void execute_async(std::string_view query,ResultCallback&& callback,ErrorCallback&& err_callback, std::vector<std::string>&& params) const noexcept;
-    private:
-        struct PGRequest {
-            std::string query;
-            std::vector<std::string> params;
-            ResultCallback on_success;
-            ErrorCallback on_error;
-        };
 
         std::expected<void, Core::Database::ConnectionError> connect() noexcept;
         bool is_connected() const noexcept;
-        std::optional<PostgresErr> attempt_reconnect(std::chrono::milliseconds timeout) const noexcept;
-        std::expected<UniquePGResult, PostgresErr> execute_with_retry(const std::string& query, const std::vector<std::string>& params, std::chrono::milliseconds reconnect_timeout) const noexcept;
-        std::expected<UniquePGResult, PostgresErr> execute_query(const std::string& query, const std::vector<std::string>& params) const noexcept;
-        void query_worker(const std::stop_token &st) const noexcept;
+
+        template<typename... Args>
+        std::future<std::expected<UniquePGResult, PostgresErr>> execute(std::string_view query, Args&& ...params) const {
+            constexpr size_t n = sizeof...(params);
+            constexpr std::array<SupportedType, n> param_arr = { internal::CreateSingleData(std::forward<Args>(params))... };
+            PgParamDetail param_buffer = internal::MakePgParamBuffer(query, param_arr);
+            return SendToWorker(std::move(param_buffer));
+        }
+        template<typename ...Params>
+        void execute_async(std::string_view query,ResultCallback&& callback,ErrorCallback&& err_callback, Params&& ...params) const noexcept {
+            constexpr size_t SIZE = sizeof...(params);
+            const std::array<SupportedType, SIZE> param_arr = { internal::CreateSingleData(std::forward<Params>(params))... };
+            PgParamDetail detail = internal::MakePgParamBuffer(query, param_arr);
+
+            PGRequest request{};
+            request.detail = std::move(detail);
+            request.on_success = std::move(callback);
+            request.on_error = std::move(err_callback);
+            {
+                std::lock_guard sl(m_mutex);
+                m_requests.push_back(std::move(request));
+            }
+            m_cv.notify_one();
+        }
+    private:
+        struct PGRequest {
+            PgParamDetail detail;
+            ResultCallback on_success;
+            ErrorCallback on_error;
+
+            PGRequest() = default;
+            explicit PGRequest(PgParamDetail&& detail) noexcept: detail(std::move(detail)) {}
+            PGRequest(PGRequest&& other) noexcept
+            : detail(std::move(other.detail)),
+              on_success(std::move(other.on_success)),
+              on_error(std::move(other.on_error)) {
+                other.on_success = nullptr;
+                other.on_error = nullptr;
+            }
+            PGRequest& operator=(PGRequest&& other) noexcept {
+                if (this != &other) {
+                    detail = std::move(other.detail);
+                    on_success = std::move(other.on_success);
+                    on_error = std::move(other.on_error);
+                    other.on_success = nullptr;
+                    other.on_error = nullptr;
+                }
+                return *this;
+            }
+            PGRequest(const PGRequest&) = delete;
+            PGRequest& operator=(const PGRequest&) = delete;
+        };
+    private:
+        std::future<std::expected<UniquePGResult, PostgresErr>> SendToWorker(PgParamDetail&& query_detail) const;
+        void QueryWorker(const std::stop_token &st) const noexcept;
+        std::expected<UniquePGResult, PostgresErr> ExecuteWithRetry(const PgParamDetail& param_detail, std::chrono::milliseconds reconnect_timeout) const noexcept;
+        std::expected<UniquePGResult, PostgresErr> ExecuteQuery(const PgParamDetail& param_detail) const noexcept;
+
+        std::optional<PostgresErr> AttemptReconnect(std::chrono::milliseconds timeout) const noexcept;
         std::expected<void, PostgresErr> CheckForPollOut(const int& socket) const noexcept;
         std::expected<void, PostgresErr> CheckForPollIn(const int& socket) const noexcept;
-        std::expected<UniquePGResult, PostgresErr> consume_result() const noexcept;
+        std::expected<UniquePGResult, PostgresErr> ConsumeResult() const noexcept;
 
     private:
         std::string m_uri;
