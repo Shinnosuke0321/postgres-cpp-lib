@@ -19,7 +19,6 @@ namespace Core::Database {
         ConnectionManager(ConnectionManager&& other) noexcept
         : m_connection(std::move(other.m_connection)),
           m_releaser(std::move(other.m_releaser)) {
-            other.m_connection.reset();
             other.m_releaser = nullptr;
         }
         ConnectionManager& operator=(ConnectionManager&& other) noexcept {
@@ -28,7 +27,6 @@ namespace Core::Database {
             }
             m_connection = std::move(other.m_connection);
             m_releaser = std::move(other.m_releaser);
-            other.m_connection.reset();
             other.m_releaser = nullptr;
             return *this;
         };
