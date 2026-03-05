@@ -32,9 +32,10 @@ TEST(PostgresSQL_Lib, QueryFutureTest) {
         if (std::expected<void, Core::Database::ConnectionError> result = pg_conn->connect(); !result) {
             return std::unexpected(result.error());
         }
-        return pg_conn;
+        return std::move(pg_conn);
     });
     auto postgres_pool = std_ex::make_intrusive<Core::Database::ConnectionPool<Database::Postgres>>(factory);
+    postgres_pool->wait_for_warmup();
 }
 
 int main(int argc, char *argv[]) {
