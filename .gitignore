@@ -51,3 +51,6 @@ Thumbs.db
 
 # bash script
 pull-subtree.sh
+
+# test data
+tests/data

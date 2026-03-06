@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: postgres-test-db
+    restart: unless-stopped
+
+    ports:
+      - "5432:5432"
+
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: test_db
+
+    volumes:
+      # persistent database files
+      - ../data:/var/lib/postgresql/data
+
+      # optional initialization scripts
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro

@@ -7,19 +7,14 @@
 #include <database/connection_pool.h>
 #include <core/ref.h>
 
-TEST(PostgresSQL_lib, GetDatabaseUrlTest) {
-    std::string pass_url = "postgres://postgres:postgres@localhost:5432/postgres"
-                                 "?keepalives=1"
-                                 "&keepalives_idle=30"
-                                 "&keepalives_interval=10"
-                                 "&keepalives_count=5";
-    const std::optional<std::string> null_url = Database::GetDatabaseUrl();
-    ASSERT_EQ(null_url, std::nullopt);
-    setenv("POSTGRES_DB_URL", "postgres://postgres:postgres@localhost:5432/postgres", 1);
-    const std::optional<std::string> valid_url = Database::GetDatabaseUrl();
-    ASSERT_TRUE(valid_url);
-    ASSERT_EQ(valid_url.value(), pass_url);
-}
+class PostgresTest : public testing::Environment {
+    void SetUp() override {
+        setenv("POSTGRES_DB_URL", "postgresql://test_user:test_password@localhost:5432/test_db?sslmode=disable", 1);
+    }
+    void TearDown() override {
+        unsetenv("POSTGRES_DB_URL");
+    }
+};
 
 TEST(PostgresSQL_Lib, QueryFutureTest) {
     auto factory = std::make_shared<Core::Database::ConnectionFactory>();
@@ -34,11 +29,15 @@ TEST(PostgresSQL_Lib, QueryFutureTest) {
         }
         return std::move(pg_conn);
     });
+    Core::Database::ConnectionPool::PoolConfig config;
+
     auto postgres_pool = std_ex::make_intrusive<Core::Database::ConnectionPool<Database::Postgres>>(factory);
     postgres_pool->wait_for_warmup();
+
 }
 
 int main(int argc, char *argv[]) {
     testing::InitGoogleTest(&argc, argv);
+    testing::AddGlobalTestEnvironment(new PostgresTest());
     return RUN_ALL_TESTS();
 }

@@ -24,27 +24,34 @@
 #include "internal/type_detail.h"
 
 namespace Database {
-    inline std::optional<std::string> GetDatabaseUrl() {
+    struct PGOptions {
+        bool keepalive = true;
+        uint32_t keepalive_count = 5;
+        uint32_t keepalive_interval = 10;
+        uint32_t keepalive_idle = 30;
+    };
+    inline std::optional<std::string> GetDatabaseUrl(const std::optional<PGOptions> &options = std::nullopt) {
         char* db_url = std::getenv("POSTGRES_DB_URL");
 
         if (!db_url || db_url[0] == '\0')
             return std::nullopt;
 
-        std::string url(db_url);
-        if (url.back() == '?' || url.back() == '&') {
+        if (options) {
+            std::string body(db_url);
+            body += (body.back() == '?' || body.back() == '&') ? "" : "&";
             std::string conn_str = std::format("{}"
-                                           "keepalives=1"
-                                           "&keepalives_idle=30"
-                                           "&keepalives_interval=10"
-                                           "&keepalives_count=5", std::move(url));
+                                           "keepalives={}"
+                                           "&keepalives_idle={}"
+                                           "&keepalives_interval={}"
+                                           "&keepalives_count={}",
+                                           std::move(body),
+                                           std::to_string(options->keepalive),
+                                           std::to_string(options->keepalive_idle),
+                                           std::to_string(options->keepalive_interval),
+                                           std::to_string(options->keepalive_count));
             return std::move(conn_str);
         }
-        std::string conn_str = std::format("{}"
-                                           "?keepalives=1"
-                                           "&keepalives_idle=30"
-                                           "&keepalives_interval=10"
-                                           "&keepalives_count=5", std::move(url));
-        return std::move(conn_str);
+        return db_url;
     }
 
     struct PGConnDeleter {
