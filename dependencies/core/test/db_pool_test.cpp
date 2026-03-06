@@ -25,7 +25,7 @@ TEST(ConnectionPoolTest, PoolTest) {
         return std::unique_ptr<Core::Database::IConnection>(new FakeConn{});
     });
 
-    Core::Database::ConnectionPool<FakeConn>::PoolConfig cfg;
+    Core::Database::PoolConfig cfg;
     cfg.is_eager = true;
 
     auto pool = std_ex::make_intrusive<Core::Database::ConnectionPool<FakeConn>>(factory, cfg);
