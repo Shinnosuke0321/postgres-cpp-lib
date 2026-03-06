@@ -29,10 +29,19 @@ TEST(PostgresSQL_Lib, QueryFutureTest) {
         }
         return std::move(pg_conn);
     });
-    Core::Database::ConnectionPool::PoolConfig config;
-
+    Core::Database::PoolConfig config;
+    config.is_eager = true;
     auto postgres_pool = std_ex::make_intrusive<Core::Database::ConnectionPool<Database::Postgres>>(factory);
     postgres_pool->wait_for_warmup();
+    auto acquired = postgres_pool->acquire();
+    ASSERT_TRUE(acquired) << acquired.error().to_str();
+    using PGClient = Core::Database::ConnectionManager<Database::Postgres>;
+    PGClient& client = acquired.value();
+
+    std::string query = "INSERT INTO users (name) VALUES ($1)";
+    auto future = client->execute(query, "user1");
+    auto result = future.get();
+    ASSERT_TRUE(result) << result.error().to_str();
 
 }
 

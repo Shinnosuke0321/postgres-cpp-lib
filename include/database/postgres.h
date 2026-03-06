@@ -94,7 +94,7 @@ namespace Database {
         template<typename... Args>
         std::future<std::expected<UniquePGResult, PostgresErr>> execute(std::string_view query, Args&& ...params) const {
             constexpr size_t n = sizeof...(params);
-            constexpr std::array<SupportedType, n> param_arr = { internal::CreateSingleData(std::forward<Args>(params))... };
+            const std::array<SupportedType, n> param_arr = { internal::CreateSingleData(std::forward<Args>(params))... };
             PgParamDetail param_buffer = internal::MakePgParamBuffer(query, param_arr);
             return SendToWorker(std::move(param_buffer));
         }
