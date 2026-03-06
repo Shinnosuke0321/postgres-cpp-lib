@@ -5,6 +5,7 @@
 #include <expected>
 #include <string>
 #include <memory>
+#include <format>
 
 namespace Core::Database {
     struct IConnection {
