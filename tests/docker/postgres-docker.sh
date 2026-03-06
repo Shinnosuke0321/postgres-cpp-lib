@@ -2,15 +2,21 @@
 
 set -e  # stop on error
 
-echo "Deleting test data"
-rm -rf /data/*
-
 echo "Stop already-running postgres on docker"
-cd docker
-docker compose down --volumes
+docker compose down
+
+echo "Deleting test data"
+rm -rf ../data
+mkdir -p ../data
 
 echo "Pulling the latest image and start postgres locally on docker"
 docker compose pull
+
+echo "Starting postgres"
 docker compose up -d
 
-echo "Done."
+echo "Waiting for postgres to start"
+sleep 3
+
+echo "Logging"
+docker compose logs postgres

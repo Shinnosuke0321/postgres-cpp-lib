@@ -2,10 +2,8 @@
 // Created by Shinnosuke Kawai on 2/28/26.
 //
 
-#include <database/postgres.h>
 #include <gtest/gtest.h>
-#include <database/connection_pool.h>
-#include <core/ref.h>
+#include "database/migrations.h"
 
 class PostgresTest : public testing::Environment {
     void SetUp() override {
@@ -33,6 +31,8 @@ TEST(PostgresSQL_Lib, QueryFutureTest) {
     config.is_eager = true;
     auto postgres_pool = std_ex::make_intrusive<Core::Database::ConnectionPool<Database::Postgres>>(factory);
     postgres_pool->wait_for_warmup();
+    auto error = Database::Migrate(postgres_pool, "tests/docker/init_test_users.sql");
+    ASSERT_TRUE(!error.has_value()) << error.value();
     auto acquired = postgres_pool->acquire();
     ASSERT_TRUE(acquired) << acquired.error().to_str();
     using PGClient = Core::Database::ConnectionManager<Database::Postgres>;
@@ -42,7 +42,6 @@ TEST(PostgresSQL_Lib, QueryFutureTest) {
     auto future = client->execute(query, "user1");
     auto result = future.get();
     ASSERT_TRUE(result) << result.error().to_str();
-
 }
 
 int main(int argc, char *argv[]) {

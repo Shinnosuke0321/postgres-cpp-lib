@@ -35,6 +35,7 @@ target_link_libraries(PostgresLib PUBLIC
 
 include(CTest)
 if (PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
+    enable_testing()
     add_subdirectory(tests)
 endif ()
 
