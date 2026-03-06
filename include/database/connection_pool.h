@@ -15,15 +15,15 @@
 #include <core/ref.h>
 
 namespace Core::Database {
+    struct PoolConfig {
+        std::size_t max_size = std::thread::hardware_concurrency();
+        std::size_t init_size = 10;
+        bool is_eager = false;
+    };
+
     template<class T>
     requires std::derived_from<T, IConnection>
     class ConnectionPool: public RefCounted<ConnectionPool<T>> {
-    public:
-        struct PoolConfig {
-            std::size_t max_size = std::thread::hardware_concurrency();
-            std::size_t init_size = 10;
-            bool is_eager = false;
-        };
     public:
         using SharedFactory = std::shared_ptr<ConnectionFactory>;
         using AcquireResult = std::expected<ConnectionManager<T>, ConnectionError>;
