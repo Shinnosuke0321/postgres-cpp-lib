@@ -9,10 +9,25 @@ if (NOT GTest_FOUND)
     FetchContent_MakeAvailable(googletest)
 endif ()
 add_executable(PostgresSQL_tests postgres_test.cpp)
+add_executable(Migration_tests migration_test.cpp)
+add_executable(PostgresError_tests postgres_error_test.cpp)
+
 target_link_libraries(PostgresSQL_tests PRIVATE
+        PostgresLib::PostgresLib
+        GTest::gtest_main
+)
+
+target_link_libraries(Migration_tests PRIVATE
+        PostgresLib::PostgresLib
+        GTest::gtest_main
+)
+
+target_link_libraries(PostgresError_tests PRIVATE
         PostgresLib::PostgresLib
         GTest::gtest_main
 )
 
 include(GoogleTest)
 gtest_discover_tests(PostgresSQL_tests)
+gtest_discover_tests(Migration_tests)
+gtest_discover_tests(PostgresError_tests)
