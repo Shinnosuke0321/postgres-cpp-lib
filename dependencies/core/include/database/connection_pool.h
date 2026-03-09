@@ -9,6 +9,7 @@
 #include <semaphore>
 #include <vector>
 #include <thread>
+#include <stop_token>
 #include "connection.h"
 #include "connection_factory.h"
 #include "connection_manager.h"
@@ -49,7 +50,6 @@ namespace Core::Database {
         std::shared_ptr<ConnectionFactory> m_factory;
         std::vector<std::jthread> m_threads;
     };
-
 } // namespace Core::Database
 
 #include "connection_pool_impl.h"

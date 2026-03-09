@@ -9,22 +9,19 @@ if (NOT GTest_FOUND)
     FetchContent_MakeAvailable(googletest)
 endif ()
 
-# Set the desired sanitizer type
-set(SANITIZER_TYPE "address") # or "address"
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Add compile and link options
-list(APPEND CMAKE_C_FLAGS "-fsanitize=${SANITIZER_TYPE}")
-list(APPEND CMAKE_CXX_FLAGS "-fsanitize=${SANITIZER_TYPE}")
-list(APPEND CMAKE_EXE_LINKER_FLAGS "-fsanitize=${SANITIZER_TYPE}")
-
-if(SANITIZER_TYPE STREQUAL "thread")
-    set(CTEST_MEMORYCHECK_TYPE "ThreadSanitizer")
-elseif(SANITIZER_TYPE STREQUAL "address")
-    set(CTEST_MEMORYCHECK_TYPE "AddressSanitizer")
-endif()
+# Sanitizer option
+set(SANITIZER_TYPE "address" CACHE STRING "Sanitizer type (address, thread, undefined, none)")
 
 add_executable(DbConnectionPool_tests db_pool_test.cpp)
 add_executable(IntrusivePtr_tests intrusive_ptr_test.cpp)
+add_executable(ConnectionError_tests connection_error_test.cpp)
+add_executable(ConnectionFactory_tests connection_factory_test.cpp)
+add_executable(ConnectionManager_tests connection_manager_test.cpp)
+add_executable(ConnectionPoolAdvanced_tests connection_pool_advanced_test.cpp)
 
 target_link_libraries(DbConnectionPool_tests PRIVATE
         DbConnectionPool::DbConnectionPool
@@ -34,7 +31,51 @@ target_link_libraries(IntrusivePtr_tests PRIVATE
         DbConnectionPool::DbConnectionPool
         GTest::gtest_main
 )
+target_link_libraries(ConnectionError_tests PRIVATE
+        DbConnectionPool::DbConnectionPool
+        GTest::gtest_main
+)
+target_link_libraries(ConnectionFactory_tests PRIVATE
+        DbConnectionPool::DbConnectionPool
+        GTest::gtest_main
+)
+target_link_libraries(ConnectionManager_tests PRIVATE
+        DbConnectionPool::DbConnectionPool
+        GTest::gtest_main
+)
+target_link_libraries(ConnectionPoolAdvanced_tests PRIVATE
+        DbConnectionPool::DbConnectionPool
+        GTest::gtest_main
+)
+
+# Apply sanitizer only for supported compilers (Homebrew GCC on macOS does not ship ASan)
+if (NOT SANITIZER_TYPE STREQUAL "none")
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT APPLE)
+
+        foreach(target
+                DbConnectionPool_tests
+                IntrusivePtr_tests
+                ConnectionError_tests
+                ConnectionFactory_tests
+                ConnectionManager_tests
+                ConnectionPoolAdvanced_tests
+        )
+            target_compile_options(${target} PRIVATE
+                    -fsanitize=${SANITIZER_TYPE}
+                    -fno-omit-frame-pointer
+            )
+
+            target_link_options(${target} PRIVATE
+                    -fsanitize=${SANITIZER_TYPE}
+            )
+        endforeach()
+    endif()
+endif()
 
 include(GoogleTest)
 gtest_discover_tests(DbConnectionPool_tests)
 gtest_discover_tests(IntrusivePtr_tests)
+gtest_discover_tests(ConnectionError_tests)
+gtest_discover_tests(ConnectionFactory_tests)
+gtest_discover_tests(ConnectionManager_tests)
+gtest_discover_tests(ConnectionPoolAdvanced_tests)

@@ -98,6 +98,58 @@ TEST(IntrusivePreTest, SingleThread_2) {
     ASSERT_EQ(count.load(std::memory_order_relaxed), 1);
 }
 
+// A separate ref-counted type that does not touch the global `count`,
+// used by the additional tests below so they don't disturb existing assertions.
+class SimpleRef : public RefCounted<SimpleRef> {
+public:
+    SimpleRef() = default;
+    ~SimpleRef() override = default;
+    int data = 0;
+};
+
+TEST(IntrusivePreTest, DefaultConstructed_IsNullAndFalse) {
+    std_ex::intrusive_ptr<SimpleRef> p;
+    ASSERT_EQ(p.get(), nullptr);
+    ASSERT_FALSE(static_cast<bool>(p));
+}
+
+TEST(IntrusivePreTest, ResetWithNonNullPtr_IncreasesCount) {
+    auto a = std_ex::make_intrusive<SimpleRef>();
+    ASSERT_EQ(a->ref_count(), 1u);
+
+    std_ex::intrusive_ptr<SimpleRef> b;
+    b.reset(a.get()); // increments ref count
+    ASSERT_EQ(a->ref_count(), 2u);
+
+    b.reset(); // decrement; a still alive
+    ASSERT_EQ(a->ref_count(), 1u);
+}
+
+TEST(IntrusivePreTest, SelfCopyAssignment_IsNoOp) {
+    auto a = std_ex::make_intrusive<SimpleRef>();
+    ASSERT_EQ(a->ref_count(), 1u);
+    a = a; // guarded by this == &other
+    ASSERT_EQ(a->ref_count(), 1u);
+}
+
+TEST(IntrusivePreTest, SelfMoveAssignment_IsNoOp) {
+    auto a = std_ex::make_intrusive<SimpleRef>();
+    SimpleRef* raw = a.get();
+    a = std::move(a); // guarded by this == &other
+    ASSERT_EQ(a.get(), raw);
+    ASSERT_EQ(a->ref_count(), 1u);
+}
+
+TEST(IntrusivePreTest, IntrusiveFromThis_IncrementsCount) {
+    auto a = std_ex::make_intrusive<SimpleRef>();
+    ASSERT_EQ(a->ref_count(), 1u);
+    {
+        auto b = a->intrusive_from_this(); // increments ref count
+        ASSERT_EQ(a->ref_count(), 2u);
+    } // b destroyed → ref count back to 1
+    ASSERT_EQ(a->ref_count(), 1u);
+}
+
 int main(int argc, char **argv) {
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

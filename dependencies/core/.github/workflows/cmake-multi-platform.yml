@@ -1,0 +1,118 @@
+name: CMake CI
+on:
+  push:
+    branches: [ dev ]
+  pull_request:
+    branches: [ dev ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-24.04, windows-latest, macos-latest ]
+        compiler: [ gcc, clang, msvc]
+        build_type: [ Debug, Release, RelWithDebInfo ]
+        include:
+          # Linux GCC
+          - os: ubuntu-24.04
+            compiler: gcc
+            cc: gcc-14
+            cxx: g++-14
+            flag: libc++
+
+          # Linux Clang
+          - os: ubuntu-24.04
+            compiler: clang
+            cc: clang-19
+            cxx: clang++-19
+            flag: libstdc++
+
+          # Windows MSVC
+          - os: windows-latest
+            compiler: msvc
+            cc: cl
+            cxx: cl
+
+          # macOS GCC (via Homebrew)
+          - os: macos-latest
+            compiler: gcc
+            cc: gcc-14
+            cxx: g++-14
+
+          # macOS LLVM Clang (via Homebrew) — paths resolved at configured time
+          - os: macos-latest
+            compiler: clang
+            flag: libc++
+
+        exclude:
+          - os: ubuntu-24.04
+            compiler: msvc
+          - os: ubuntu-24.04
+            compiler: apple-clang
+          - os: windows-latest
+            compiler: gcc
+          - os: windows-latest
+            compiler: clang
+          - os: windows-latest
+            compiler: apple-clang
+          - os: macos-latest
+            compiler: msvc
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # Install Homebrew
+          brew update
+          brew upgrade
+          brew install ninja cmake llvm gcc clang-format
+
+      # Install Ninja on Linux
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-19 clang-tools-19 clang-format-19 clang-tidy-19 libc++-dev libc++abi-dev ninja-build gcc-14 g++-14
+
+        # Setup MSVC environment
+      - name: Setup MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        shell: bash
+        run: |
+          CC_COMPILER="${{ matrix.cc }}"
+          CXX_COMPILER="${{ matrix.cxx }}"
+          CLANG_CXX_FLAGS=""
+
+          # Resolve Homebrew LLVM paths on macOS (not available as matrix values)
+          SYSROOT_FLAG=""
+          if [ "${{ runner.os }}" = "macOS" ] && [ "${{ matrix.compiler }}" = "clang" ]; then
+            LLVM_PREFIX="$(brew --prefix llvm)"
+            CC_COMPILER="${LLVM_PREFIX}/bin/clang"
+            CXX_COMPILER="${LLVM_PREFIX}/bin/clang++"
+            # Homebrew LLVM doesn't find macOS SDK headers without an explicit sysroot
+            SYSROOT_FLAG="-DCMAKE_OSX_SYSROOT=$(xcrun --show-sdk-path)"
+          fi
+
+          if [ "${{ matrix.compiler }}" = "clang" ] ; then
+            CLANG_CXX_FLAGS="-DCMAKE_CXX_FLAGS=-stdlib=${{ matrix.flag }}"
+          fi
+
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_C_COMPILER="${CC_COMPILER}" \
+            -DCMAKE_CXX_COMPILER="${CXX_COMPILER}" \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            ${CLANG_CXX_FLAGS} \
+            ${SYSROOT_FLAG}
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

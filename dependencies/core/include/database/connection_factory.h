@@ -44,15 +44,17 @@ namespace Core::Database {
         std::expected<std::unique_ptr<T>, ConnectionError> create_connection() {
             const auto type_id = std::type_index(typeid(T));
 
-            std::shared_lock lock(m_shared_mutex);
-            const auto it = m_factories.find(type_id);
-            if (it == m_factories.end()) {
-                char buffer[35] = "No factory registered for type ";
-                strcat(buffer, type_id.name());
-                return std::unexpected(ConnectionError::FactoryNotRegistered(buffer));
-            };
-            const CreateConnectionFn& factory = it->second;
-            lock.unlock();
+            CreateConnectionFn factory;
+            {
+                std::shared_lock lock(m_shared_mutex);
+                const auto it = m_factories.find(type_id);
+                if (it == m_factories.end()) {
+                    char buffer[35] = "No factory registered for type ";
+                    strcat(buffer, type_id.name());
+                    return std::unexpected(ConnectionError::FactoryNotRegistered(buffer));
+                };
+                factory = it->second;
+            }
             std::expected<std::unique_ptr<IConnection>, ConnectionError> base_res = factory();
             if (!base_res) {
                 return std::unexpected(base_res.error());
