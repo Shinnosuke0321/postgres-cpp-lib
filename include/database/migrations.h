@@ -11,10 +11,10 @@
 
 namespace Database {
 
-    inline std::optional<std::string> Migrate(std_ex::intrusive_ptr<Core::Database::ConnectionPool<Postgres>> pool, std::filesystem::path path) noexcept {
+    inline std::optional<std::variant<Core::Database::ConnectionError, PostgresErr>> Migrate(std_ex::intrusive_ptr<Core::Database::ConnectionPool<Postgres>> pool, const std::filesystem::path& path) noexcept {
         std::ifstream file(path);
         if (!file.is_open()) {
-            return "Failed to open file:";
+            return PostgresErr::SqlFileError("File not found");
         }
         std::string line;
         std::string query;
@@ -24,13 +24,12 @@ namespace Database {
         using PGClient = Core::Database::ConnectionManager<Postgres>;
         auto acquire_result = pool->acquire();
         if (!acquire_result) {
-            return acquire_result.error().to_str();
+            return std::move(acquire_result.error());
         }
         PGClient& client = acquire_result.value();
         auto future = client->execute(query);
-        auto result = future.get();
-        if (!result) {
-            return result.error().to_str();
+        if (auto result = future.get(); !result) {
+            return std::move(result.error());
         }
         return std::nullopt;
     }

@@ -11,9 +11,10 @@ namespace Database {
         enum class Type {
             ConnectionFailed, ReconnectFailed, QueryFailed, FlushFailed, PollFailed,
             ConsumeFailed, SocketFailed, Busy, TimeOut, ShuttingDown,
-            BadConnection
+            BadConnection, SqlFileError,
         };
 
+        static PostgresErr SqlFileError(const char* str) noexcept {return PostgresErr{Type::SqlFileError, str};}
         static PostgresErr FailedToConnect() noexcept {return PostgresErr{Type::ConnectionFailed, "Failed to connect to postgres"};}
         static PostgresErr FailedToReconnect(const char* msg) noexcept {return PostgresErr{Type::ReconnectFailed, msg};}
         static PostgresErr BadConnection(const char* str) noexcept {return PostgresErr{Type::BadConnection, str};}
@@ -58,6 +59,9 @@ namespace Database {
                     break;
                 case Type::ReconnectFailed:
                     code_str = "ReconnectFailed";
+                    break;
+                case Type::SqlFileError:
+                    code_str = "SqlFileError";
                     break;
             }
             return std::format("Postgres: {} {}", code_str, message);

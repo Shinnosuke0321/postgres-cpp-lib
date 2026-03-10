@@ -52,7 +52,8 @@ Thumbs.db
 # bash script
 pull-subtree.sh
 
-# test data
+# temp data for testing
 tests/data
 
+# claude config file
 Claude.md
