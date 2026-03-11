@@ -13,7 +13,7 @@
 #include "connection.h"
 #include "connection_factory.h"
 #include "connection_manager.h"
-#include <core/ref.h>
+#include <core/memory/intrusive_ptr.h>
 
 namespace Core::Database {
     struct PoolConfig {
@@ -24,7 +24,7 @@ namespace Core::Database {
 
     template<class T>
     requires std::derived_from<T, IConnection>
-    class ConnectionPool: public RefCounted<ConnectionPool<T>> {
+    class ConnectionPool: public core::ref_counted<ConnectionPool<T>> {
     public:
         using SharedFactory = std::shared_ptr<ConnectionFactory>;
         using AcquireResult = std::expected<ConnectionManager<T>, ConnectionError>;

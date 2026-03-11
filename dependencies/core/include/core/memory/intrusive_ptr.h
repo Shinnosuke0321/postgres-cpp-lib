@@ -7,26 +7,25 @@
 #include <concepts>
 #include <print>
 
-namespace std_ex {
+namespace smart_ptr {
     template<class T>
     class intrusive_ptr;
 }
 
-namespace Core {
-
-    template<class Derived>
-    class RefCounted {
+namespace core {
+    template<class derived>
+    class ref_counted {
     public:
-        RefCounted() = default;
-        std_ex::intrusive_ptr<Derived> intrusive_from_this() noexcept {
-            return std_ex::intrusive_ptr<Derived>(static_cast<Derived*>(this));
+        ref_counted() = default;
+        smart_ptr::intrusive_ptr<derived> intrusive_from_this() noexcept {
+            return smart_ptr::intrusive_ptr<derived>(static_cast<derived*>(this));
         }
-        std_ex::intrusive_ptr<const Derived> intrusive_from_this() const noexcept {
-            return std_ex::intrusive_ptr<const Derived>(static_cast<const Derived*>(this));
+        smart_ptr::intrusive_ptr<const derived> intrusive_from_this() const noexcept {
+            return smart_ptr::intrusive_ptr<const derived>(static_cast<const derived*>(this));
         }
         uint32_t ref_count() const noexcept { return m_ref_count.load(std::memory_order_relaxed); }
     protected:
-        virtual ~RefCounted() = default;
+        virtual ~ref_counted() = default;
 
     private:
         void increment() const noexcept {
@@ -40,18 +39,24 @@ namespace Core {
             return false;
         }
         template<class T>
-        friend class std_ex::intrusive_ptr;
+        friend class smart_ptr::intrusive_ptr;
     private:
 
         mutable std::atomic_uint32_t m_ref_count = 0;
     };
 }
 
-namespace std_ex {
+namespace smart_ptr {
+    template<class T, typename ...Arg>
+    intrusive_ptr<T> make_intrusive(Arg&&... args) {
+        T* ptr = new T(std::forward<Arg>(args)...);
+        return intrusive_ptr(ptr);
+    }
+
     template<class T>
     class intrusive_ptr {
         using U = std::remove_const_t<T>;
-        static_assert(std::derived_from<U, Core::RefCounted<U>>, "T must be derived from RefCounted");
+        static_assert(std::derived_from<U, core::ref_counted<U>>, "T must be derived from RefCounted");
     public:
         intrusive_ptr() = default;
 
@@ -117,10 +122,4 @@ namespace std_ex {
     private:
         T* m_ptr = nullptr;
     };
-
-    template<class T, typename ...Arg>
-    intrusive_ptr<T> make_intrusive(Arg&&... args) {
-        T* ptr = new T(std::forward<Arg>(args)...);
-        return intrusive_ptr(ptr);
-    }
 }
