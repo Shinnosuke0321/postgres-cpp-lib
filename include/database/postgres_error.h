@@ -8,7 +8,7 @@
 #include <core/error/base_error.h>
 
 namespace Database {
-    struct PostgresErr: BaseError {
+    struct PostgresErr: Core::BaseError {
         enum class Type {
             ConnectionFailed, ReconnectFailed, QueryFailed, FlushFailed, PollFailed,
             ConsumeFailed, SocketFailed, Busy, TimeOut, ShuttingDown,
@@ -67,6 +67,7 @@ namespace Database {
             }
             return std::format("Postgres: {} {}", code_str, message);
         }
+        ~PostgresErr() noexcept override = default;
     private:
         explicit PostgresErr(const Type err, std::string&& message): err(err), message(std::move(message)){}
         explicit PostgresErr(const Type err, const char* message): err(err), message(message){}

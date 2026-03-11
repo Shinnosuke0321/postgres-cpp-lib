@@ -4,34 +4,34 @@
 
 #pragma once
 #include <core/memory/intrusive_ptr.h>
+#include <core/error/base_error.h>
 #include <database/connection_pool.h>
 #include "postgres.h"
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <variant>
 
 namespace Database {
 
-    struct PGMigrationError {
-        using ErrorVariant = std::variant<std::monostate, PostgresErr, Core::Database::ConnectionError>;
-
+    struct PGMigrationError: Core::BaseError {
         PGMigrationError() = default;
-        explicit PGMigrationError(PostgresErr&& err) : error_(std::move(err)) {}
-        explicit PGMigrationError(Core::Database::ConnectionError&& conn_err) : error_(std::move(conn_err)) {}
+        ~PGMigrationError() override = default;
 
-        explicit operator bool() const noexcept { return !std::holds_alternative<std::monostate>(error_); }
+        explicit PGMigrationError(PostgresErr&& err)
+            : m_error(std::move(err)) {}
+        explicit PGMigrationError(Core::Database::ConnectionError&& conn_err)
+            : m_error(std::move(conn_err)) {}
 
-        std::string to_str() noexcept {
-            return std::visit([]<typename T0>(T0& e) -> std::string {
-                if constexpr (std::is_same_v<std::decay_t<T0>, std::monostate>) {
-                    return {};
-                } else {
-                    return e.to_str();
-                }
-            }, error_);
+        explicit operator bool() const noexcept { return m_error.has_value(); }
+
+        std::string to_str() const noexcept override {
+            if (!m_error) return {};
+            return std::visit([](const auto& e) { return e.to_str(); }, *m_error);
         }
     private:
-        ErrorVariant error_;
+        using ErrorVariant = std::variant<PostgresErr, Core::Database::ConnectionError>;
+        std::optional<ErrorVariant> m_error = std::nullopt;
     };
 
     inline PGMigrationError Migrate(smart_ptr::intrusive_ptr<Core::Database::ConnectionPool<Postgres>> pool, const std::filesystem::path& path) noexcept {

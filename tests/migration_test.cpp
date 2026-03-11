@@ -42,14 +42,14 @@ TEST_F(PGMigrationTest, WrongPathToSqlFilePassed) {
 }
 
 TEST_F(PGMigrationTest, ValidMigrationSucceeds) {
-    auto result = Database::Migrate(pg_pool, "tests/docker/init_test_users.sql");
+    auto result = Database::Migrate(pg_pool, TEST_MIGRATIONS_SQL_PATH);
     EXPECT_FALSE(result) << result.to_str();
 }
 
 TEST_F(PGMigrationTest, IdempotentMigrationSucceeds) {
-    auto first = Database::Migrate(pg_pool, "tests/docker/init_test_users.sql");
+    auto first = Database::Migrate(pg_pool, TEST_MIGRATIONS_SQL_PATH);
     ASSERT_FALSE(first) << first.to_str();
-    auto second = Database::Migrate(pg_pool, "tests/docker/init_test_users.sql");
+    auto second = Database::Migrate(pg_pool, TEST_MIGRATIONS_SQL_PATH);
     EXPECT_FALSE(second) << second.to_str();
 }
 
@@ -63,9 +63,7 @@ TEST_F(PGMigrationTest, InvalidSqlFileReturnsQueryFailed) {
     std::filesystem::remove(temp_path);
 
     ASSERT_TRUE(result);
-    ASSERT_TRUE(std::holds_alternative<Database::PostgresErr>(result.value()));
-    const auto& err = std::get<Database::PostgresErr>(result.value());
-    EXPECT_EQ(err.get_type(), Database::PostgresErr::Type::QueryFailed);
+    ASSERT_TRUE(result.to_str().contains("Postgres: QueryFailed")) << result.to_str();
 }
 
 int main(int argc, char *argv[]) {

@@ -17,6 +17,12 @@ target_link_libraries(PostgresSQL_tests PRIVATE
         GTest::gtest_main
 )
 
+configure_file(docker/init_test_users.sql ${CMAKE_CURRENT_BINARY_DIR}/init_test_users.sql COPYONLY)
+
+target_compile_definitions(Migration_tests PRIVATE
+        TEST_MIGRATIONS_SQL_PATH="${CMAKE_CURRENT_BINARY_DIR}/init_test_users.sql"
+)
+
 target_link_libraries(Migration_tests PRIVATE
         PostgresLib::PostgresLib
         GTest::gtest_main
