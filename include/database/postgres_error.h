@@ -7,7 +7,7 @@
 #include <format>
 
 namespace Database {
-    struct PostgresErr {
+    struct PostgresErr: Core::Error {
         enum class Type {
             ConnectionFailed, ReconnectFailed, QueryFailed, FlushFailed, PollFailed,
             ConsumeFailed, SocketFailed, Busy, TimeOut, ShuttingDown,
@@ -24,7 +24,7 @@ namespace Database {
 
         Type get_type() const noexcept {return err;}
 
-        std::string to_str() const noexcept {
+        std::string to_str() const noexcept override {
             std::string_view code_str;
             switch (err) {
                 case Type::ConnectionFailed:

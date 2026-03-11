@@ -23,7 +23,7 @@ protected:
             }
             return std::move(pg_conn);
         });
-        pg_pool = std_ex::make_intrusive<Core::Database::ConnectionPool<Database::Postgres>>(factory);
+        pg_pool = smart_ptr::make_intrusive<Core::Database::ConnectionPool<Database::Postgres>>(factory);
         pg_pool->wait_for_warmup();
     }
 
@@ -31,27 +31,26 @@ protected:
         unsetenv("POSTGRES_DB_URL");
     }
 
-    std_ex::intrusive_ptr<Core::Database::ConnectionPool<Database::Postgres>> pg_pool;
+    smart_ptr::intrusive_ptr<Core::Database::ConnectionPool<Database::Postgres>> pg_pool;
 };
 
 TEST_F(PGMigrationTest, WrongPathToSqlFilePassed) {
     auto result = Database::Migrate(pg_pool, "/tmp/nonexistent_migration_file_12345.sql");
-    ASSERT_TRUE(result.has_value());
-    ASSERT_TRUE(std::holds_alternative<Database::PostgresErr>(result.value()));
-    const auto& err = std::get<Database::PostgresErr>(result.value());
-    EXPECT_EQ(err.get_type(), Database::PostgresErr::Type::SqlFileError);
+    ASSERT_TRUE(result);
+    ASSERT_TRUE(result.to_str().contains("Postgres:"));
+    ASSERT_TRUE(result.to_str().contains("SqlFileError"));
 }
 
 TEST_F(PGMigrationTest, ValidMigrationSucceeds) {
     auto result = Database::Migrate(pg_pool, "tests/docker/init_test_users.sql");
-    EXPECT_FALSE(result.has_value()) << "Expected migration to succeed but got an error";
+    EXPECT_FALSE(result) << result.to_str();
 }
 
 TEST_F(PGMigrationTest, IdempotentMigrationSucceeds) {
     auto first = Database::Migrate(pg_pool, "tests/docker/init_test_users.sql");
-    ASSERT_FALSE(first.has_value()) << "First migration failed unexpectedly";
+    ASSERT_FALSE(first) << first.to_str();
     auto second = Database::Migrate(pg_pool, "tests/docker/init_test_users.sql");
-    EXPECT_FALSE(second.has_value()) << "Second migration failed — migration is not idempotent";
+    EXPECT_FALSE(second) << second.to_str();
 }
 
 TEST_F(PGMigrationTest, InvalidSqlFileReturnsQueryFailed) {
@@ -63,7 +62,7 @@ TEST_F(PGMigrationTest, InvalidSqlFileReturnsQueryFailed) {
     auto result = Database::Migrate(pg_pool, temp_path);
     std::filesystem::remove(temp_path);
 
-    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result);
     ASSERT_TRUE(std::holds_alternative<Database::PostgresErr>(result.value()));
     const auto& err = std::get<Database::PostgresErr>(result.value());
     EXPECT_EQ(err.get_type(), Database::PostgresErr::Type::QueryFailed);

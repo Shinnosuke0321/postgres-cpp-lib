@@ -3,18 +3,41 @@
 //
 
 #pragma once
-#include <core/ref.h>
+#include <core/memory/intrusive_ptr.h>
 #include <database/connection_pool.h>
 #include "postgres.h"
 #include <filesystem>
 #include <fstream>
+#include <variant>
 
 namespace Database {
 
-    inline std::optional<std::variant<Core::Database::ConnectionError, PostgresErr>> Migrate(std_ex::intrusive_ptr<Core::Database::ConnectionPool<Postgres>> pool, const std::filesystem::path& path) noexcept {
+    struct PGMigrationError {
+        using ErrorVariant = std::variant<std::monostate, PostgresErr, Core::Database::ConnectionError>;
+
+        PGMigrationError() = default;
+        explicit PGMigrationError(PostgresErr&& err) : error_(std::move(err)) {}
+        explicit PGMigrationError(Core::Database::ConnectionError&& conn_err) : error_(std::move(conn_err)) {}
+
+        explicit operator bool() const noexcept { return !std::holds_alternative<std::monostate>(error_); }
+
+        std::string to_str() noexcept {
+            return std::visit([]<typename T0>(T0& e) -> std::string {
+                if constexpr (std::is_same_v<std::decay_t<T0>, std::monostate>) {
+                    return {};
+                } else {
+                    return e.to_str();
+                }
+            }, error_);
+        }
+    private:
+        ErrorVariant error_;
+    };
+
+    inline PGMigrationError Migrate(smart_ptr::intrusive_ptr<Core::Database::ConnectionPool<Postgres>> pool, const std::filesystem::path& path) noexcept {
         std::ifstream file(path);
         if (!file.is_open()) {
-            return PostgresErr::SqlFileError("File not found");
+            return PGMigrationError(PostgresErr::SqlFileError("Failed to open sql file"));
         }
         std::string line;
         std::string query;
@@ -24,13 +47,13 @@ namespace Database {
         using PGClient = Core::Database::ConnectionManager<Postgres>;
         auto acquire_result = pool->acquire();
         if (!acquire_result) {
-            return std::move(acquire_result.error());
+            return PGMigrationError(std::move(acquire_result.error()));
         }
         PGClient& client = acquire_result.value();
         auto future = client->execute(query);
         if (auto result = future.get(); !result) {
-            return std::move(result.error());
+            return PGMigrationError(std::move(result.error()));
         }
-        return std::nullopt;
+        return {};
     }
 }

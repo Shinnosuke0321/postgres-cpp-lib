@@ -29,7 +29,7 @@ TEST(PostgresSQL_Lib, QueryFutureTest) {
     });
     Core::Database::PoolConfig config;
     config.is_eager = true;
-    auto postgres_pool = std_ex::make_intrusive<Core::Database::ConnectionPool<Database::Postgres>>(factory);
+    auto postgres_pool = smart_ptr::make_intrusive<Core::Database::ConnectionPool<Database::Postgres>>(factory);
     postgres_pool->wait_for_warmup();
     auto acquired = postgres_pool->acquire();
     ASSERT_TRUE(acquired) << acquired.error().to_str();
