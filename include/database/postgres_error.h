@@ -5,6 +5,7 @@
 #pragma once
 #include <string>
 #include <format>
+#include <core/error/base_error.h>
 
 namespace Database {
     struct PostgresErr: BaseError {
