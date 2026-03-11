@@ -33,7 +33,7 @@ protected:
     }
 
     auto make_pool(Core::Database::PoolConfig cfg) {
-        return std_ex::make_intrusive<Core::Database::ConnectionPool<FakeConn>>(factory, cfg);
+        return smart_ptr::make_intrusive<Core::Database::ConnectionPool<FakeConn>>(factory, cfg);
     }
 };
 
@@ -124,7 +124,7 @@ TEST_F(PoolFeeder, Acquire_FactoryFailure_ReturnsError) {
     cfg.init_size = 0;
     cfg.max_size = 2;
 
-    auto pool = std_ex::make_intrusive<Core::Database::ConnectionPool<FakeConn>>(fail_factory, cfg);
+    auto pool = smart_ptr::make_intrusive<Core::Database::ConnectionPool<FakeConn>>(fail_factory, cfg);
     auto res = pool->acquire();
     ASSERT_FALSE(res.has_value());
     // Must be the factory's error, not a timeout
