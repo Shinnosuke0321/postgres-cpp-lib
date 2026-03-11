@@ -34,3 +34,6 @@ Makefile
 *.swp
 *.swo
 *.tmp
+
+# claude file
+CLAUDE.md

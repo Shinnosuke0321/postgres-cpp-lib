@@ -6,13 +6,14 @@
 #include <string>
 #include <memory>
 #include <format>
+#include <core/error/base_error.h>
 
 namespace Core::Database {
     struct IConnection {
         virtual ~IConnection() = default;
     };
 
-    struct ConnectionError {
+    struct ConnectionError: BaseError {
         enum class Type {
             ConnectionFailed, MissingConfig, FactoryNotRegistered, Timeout, SocketFailed, AuthFailed
         };
@@ -35,7 +36,7 @@ namespace Core::Database {
             return ConnectionError{Type::AuthFailed, str};
         }
 
-        std::string to_str() noexcept {
+        std::string to_str() const noexcept override {
             return std::format("ConnectionError [{}]: {}", type_str(), m_message);
         }
 
