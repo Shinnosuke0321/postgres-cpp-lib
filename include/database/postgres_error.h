@@ -7,7 +7,7 @@
 #include <format>
 
 namespace Database {
-    struct PostgresErr: Core::Error {
+    struct PostgresErr: BaseError {
         enum class Type {
             ConnectionFailed, ReconnectFailed, QueryFailed, FlushFailed, PollFailed,
             ConsumeFailed, SocketFailed, Busy, TimeOut, ShuttingDown,
