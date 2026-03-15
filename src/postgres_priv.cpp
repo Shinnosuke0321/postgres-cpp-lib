@@ -4,15 +4,15 @@
 #include <print>
 #include "database/postgres.h"
 
-namespace Database {
-    std::future<std::expected<UniquePGResult, PostgresErr>> Postgres::SendToWorker(PgParamDetail&& query_detail) const {
-        using Result = std::expected<UniquePGResult, PostgresErr>;
+namespace database {
+    std::future<std::expected<result::table, PostgresErr>> Postgres::SendToWorker(PgParamDetail&& query_detail) const {
+        using Result = std::expected<result::table, PostgresErr>;
         auto prom = std::make_shared<std::promise<Result>>();
         auto future = prom->get_future();
         PGRequest request{std::move(query_detail)};
-        request.on_success = [prom](UniquePGResult reply) {
+        request.on_success = [prom](result::table table) {
             try {
-                prom->set_value(std::move(reply));
+                prom->set_value(std::move(table));
             } catch (...) {}
         };
         request.on_error = [prom](const PostgresErr& err) {
@@ -76,16 +76,17 @@ namespace Database {
                 m_requests.pop_front();
             }
 
-            std::expected<UniquePGResult, PostgresErr> result = ExecuteWithRetry(request.detail,std::chrono::milliseconds(5000));
+            std::expected<result::unique_pg_result, PostgresErr> result = ExecuteWithRetry(request.detail,std::chrono::milliseconds(5000));
             if (!result) {
                 request.on_error(result.error());
                 continue;
             }
-            request.on_success(std::move(result.value()));
+            result::table pg_res{std::move(result.value())};
+            request.on_success(std::move(pg_res));
         }
     }
 
-    std::expected<UniquePGResult, PostgresErr> Postgres::ExecuteWithRetry(const PgParamDetail& param_detail, const std::chrono::milliseconds reconnect_timeout) const noexcept {
+    std::expected<result::unique_pg_result, PostgresErr> Postgres::ExecuteWithRetry(const PgParamDetail& param_detail, const std::chrono::milliseconds reconnect_timeout) const noexcept {
         for (int attempts = 1; attempts <= 2; ++attempts) {
             if (!is_connected()) {
                 // LOG_DEBUG << "Connection is dead";
@@ -94,7 +95,7 @@ namespace Database {
                 }
             }
 
-            std::expected<UniquePGResult, PostgresErr> exe_res = ExecuteQuery(param_detail);
+            std::expected<result::unique_pg_result, PostgresErr> exe_res = ExecuteQuery(param_detail);
             if (exe_res) {
                 return exe_res;
             }
@@ -110,13 +111,11 @@ namespace Database {
         return std::unexpected(PostgresErr::QueryFailed("unreachable"));
     }
 
-    std::expected<UniquePGResult, PostgresErr> Postgres::ExecuteQuery(const PgParamDetail& param_detail) const noexcept {
+    std::expected<result::unique_pg_result, PostgresErr> Postgres::ExecuteQuery(const PgParamDetail& param_detail) const noexcept {
         const int sock = PQsocket(m_connection.get());
         if (sock < 0) {
             return std::unexpected(PostgresErr::SocketFailed("failed to get socket"));
         }
-        // PrepareQueryParams(params, argc, arg_lengths, n_params);
-
         const int ok = PQsendQueryParams(
             m_connection.get(),
             param_detail.query.c_str(),
@@ -125,7 +124,7 @@ namespace Database {
             param_detail.buffers.data(),
             param_detail.lengths.data(),
             param_detail.formats.data(),
-            0);
+            1);
 
         if (ok == 0) {
             const char* msg = PQerrorMessage(m_connection.get());
@@ -231,10 +230,10 @@ namespace Database {
         }
     }
 
-    std::expected<UniquePGResult, PostgresErr> Postgres::ConsumeResult() const noexcept {
-        UniquePGResult result = nullptr;
+    std::expected<result::unique_pg_result, PostgresErr> Postgres::ConsumeResult() const noexcept {
+        result::unique_pg_result result = nullptr;
         while (PGresult* r = PQgetResult(m_connection.get())) {
-            UniquePGResult temp(r);
+            result::unique_pg_result temp(r);
             const auto st = PQresultStatus(temp.get());
             if (st == PGRES_TUPLES_OK || st == PGRES_COMMAND_OK) {
                 if (!result)

@@ -4,7 +4,7 @@
 #include "database/postgres.h"
 
 
-namespace Database {
+namespace database {
     std::expected<std::unique_ptr<Postgres>, Core::Database::ConnectionError> Postgres::ConnectionFactory() noexcept {
         using Core::Database::ConnectionError;
         std::optional<std::string> uri = GetDatabaseUrl();

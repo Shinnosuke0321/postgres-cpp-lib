@@ -7,7 +7,7 @@
 #include <format>
 #include <core/error/base_error.h>
 
-namespace Database {
+namespace database {
     struct PostgresErr: Core::BaseError {
         enum class Type {
             ConnectionFailed, ReconnectFailed, QueryFailed, FlushFailed, PollFailed,

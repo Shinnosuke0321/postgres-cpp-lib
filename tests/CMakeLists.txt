@@ -34,6 +34,6 @@ target_link_libraries(PostgresError_tests PRIVATE
 )
 
 include(GoogleTest)
-gtest_discover_tests(PostgresSQL_tests)
 gtest_discover_tests(Migration_tests)
+gtest_discover_tests(PostgresSQL_tests)
 gtest_discover_tests(PostgresError_tests)

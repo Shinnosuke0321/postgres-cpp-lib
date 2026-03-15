@@ -12,7 +12,7 @@
 #include <optional>
 #include <variant>
 
-namespace Database {
+namespace database {
 
     struct PGMigrationError: Core::BaseError {
         PGMigrationError() = default;

@@ -5,7 +5,7 @@
 #include "database/postgres_error.h"
 
 TEST(PostgresErrTest, GetTypeReturnsCorrectEnum) {
-    using E = Database::PostgresErr;
+    using E = database::PostgresErr;
     EXPECT_EQ(E::SqlFileError("x").get_type(),       E::Type::SqlFileError);
     EXPECT_EQ(E::FailedToConnect().get_type(),        E::Type::ConnectionFailed);
     EXPECT_EQ(E::FailedToReconnect("x").get_type(),  E::Type::ReconnectFailed);
@@ -16,7 +16,7 @@ TEST(PostgresErrTest, GetTypeReturnsCorrectEnum) {
 }
 
 TEST(PostgresErrTest, ToStrContainsTypeName) {
-    using E = Database::PostgresErr;
+    using E = database::PostgresErr;
     EXPECT_TRUE(E::SqlFileError("x").to_str().contains("SqlFileError"));
     EXPECT_TRUE(E::FailedToConnect().to_str().contains("ConnectionFailed"));
     EXPECT_TRUE(E::FailedToReconnect("x").to_str().contains("ReconnectFailed"));
@@ -27,7 +27,7 @@ TEST(PostgresErrTest, ToStrContainsTypeName) {
 }
 
 TEST(PostgresErrTest, ToStrContainsMessage) {
-    using E = Database::PostgresErr;
+    using E = database::PostgresErr;
     const char* msg = "my_error_detail";
     EXPECT_TRUE(E::QueryFailed(msg).to_str().contains(msg));
     EXPECT_TRUE(E::SqlFileError(msg).to_str().contains(msg));
@@ -38,7 +38,7 @@ TEST(PostgresErrTest, ToStrContainsMessage) {
 }
 
 TEST(PostgresErrTest, ToStrStartsWithPrefix) {
-    using E = Database::PostgresErr;
+    using E = database::PostgresErr;
     EXPECT_TRUE(E::QueryFailed("x").to_str().starts_with("Postgres: "));
     EXPECT_TRUE(E::FailedToConnect().to_str().starts_with("Postgres: "));
     EXPECT_TRUE(E::SqlFileError("x").to_str().starts_with("Postgres: "));

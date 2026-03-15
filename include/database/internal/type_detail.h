@@ -3,15 +3,24 @@
 //
 
 #pragma once
+#include <bit>
 #include <chrono>
+#include <cstring>
 #include <iomanip>
+#include <print>
 #include <string>
 #include <type_traits>
 #include <span>
 
-namespace Database {
+namespace database {
     using timestamp = std::chrono::system_clock::time_point;
-    using SupportedType = std::variant<std::nullptr_t, std::int32_t, std::int64_t,std::uint32_t,std::uint64_t, double, float, const char*, std::string, std::byte, timestamp>;
+    using SupportedType = std::variant<std::nullptr_t,
+                                       bool,
+                                       int16_t, int32_t, int64_t, uint16_t, uint32_t, uint64_t,
+                                       double, float,
+                                       const char*, char*, std::string,
+                                       std::byte,
+                                       timestamp>;
 
     struct PgParamDetail {
         std::string query;
@@ -49,7 +58,7 @@ namespace Database {
     };
 }
 
-namespace Database::internal {
+namespace database::internal {
     template<class Param>
     constexpr bool IsSupported() noexcept {
         using D = std::decay_t<Param>;
@@ -57,9 +66,8 @@ namespace Database::internal {
                                   std::is_same_v<D, std::byte> ||
                                   (std::is_integral_v<D> && !std::is_same_v<D, bool>) ||
                                   std::is_same_v<D, bool> || std::is_same_v<D, float> || std::is_same_v<D, double> ||
-                                  std::is_same_v<D, std::string> || std::is_same_v<D, const char*> ||
+                                  std::is_same_v<D, std::string> || std::is_same_v<D, char*> || std::is_same_v<D, const char*> ||
                                   std::is_same_v<D, std::chrono::system_clock::time_point>;
-
         return is_valid;
     };
 
@@ -69,13 +77,17 @@ namespace Database::internal {
         using D = std::decay_t<Integral>;
         static_assert(std::is_integral_v<D> && !std::is_same_v<D, bool>, "Integral type must be signed or unsigned");
         if constexpr (std::is_signed_v<D>) {
-            if constexpr (sizeof(D) <= 4)
+            if constexpr (sizeof(D) <= 2)
+                return SupportedType{ static_cast<std::int16_t>(data) };
+            else if constexpr (sizeof(D) <= 4)
                 return SupportedType{ static_cast<std::int32_t>(data) };
             else
                 return SupportedType{ static_cast<std::int64_t>(data) };
         }
         else {
-            if constexpr (sizeof(D) <= 4)
+            if constexpr (sizeof(D) <= 2)
+                return SupportedType{ static_cast<std::uint16_t>(data) };
+            else if constexpr (sizeof(D) <= 4)
                 return SupportedType{ static_cast<std::uint32_t>(data) };
             else
                 return SupportedType{ static_cast<std::uint64_t>(data) };
@@ -102,7 +114,7 @@ namespace Database::internal {
     }
 }
 
-namespace Database::internal {
+namespace database::internal {
 
     // A small helper for std::visit
     template <class... Ts>
@@ -141,27 +153,59 @@ namespace Database::internal {
         return oss.str();
     }
 
-    inline std::string ToPgText(const SupportedType& v)
+    // Returns value in big-endian (network) byte order.
+    template<typename T>
+    T ToNetworkOrder(T value) noexcept {
+        if constexpr (std::endian::native == std::endian::little) {
+            static_assert(std::is_trivially_copyable_v<T>);
+            T result = std::byteswap(value);
+            return result;
+        }
+    }
+
+    // Encodes a fixed-size integer/float type as big-endian bytes into a std::string.
+    template<typename T>
+    std::string EncodeFixed(T value) noexcept {
+        const T net = ToNetworkOrder(value);
+        std::string out(sizeof(T), '\0');
+        std::memcpy(out.data(), &net, sizeof(T));
+        return out;
+    }
+
+    // Encodes a SupportedType value into its PostgreSQL binary wire format.
+    // Integers/floats: big-endian; text: raw UTF-8 bytes (no null terminator);
+    // bool: 1 byte; byte: 1 byte; timestamp: int64 µs since PostgreSQL epoch (2000-01-01 UTC).
+    inline std::string ToBinary(const SupportedType& v)
     {
         return std::visit(Overloaded{
-            [](std::nullptr_t) { return std::string{}; },
-            [](const std::int32_t x) { return std::to_string(x); },
-            [](const std::int64_t x) { return std::to_string(x); },
-            [](const std::uint32_t x) { return std::to_string(x); },
-            [](const std::uint64_t x) { return std::to_string(x); },
-            [](const double x) {
-                std::ostringstream oss;
-                oss << std::setprecision(17) << x;
-                return oss.str();
+            [](std::nullptr_t)          -> std::string { return {}; },
+            [](const bool b)     { return std::string(1, b ? '\x01' : '\x00'); },
+            [](const std::int16_t x)    -> std::string { return EncodeFixed(x); },
+            [](const std::int32_t x)    -> std::string { return EncodeFixed(x); },
+            [](const std::int64_t x)    -> std::string { return EncodeFixed(x); },
+            [](const std::uint16_t x)   -> std::string { return EncodeFixed(x); },
+            [](const std::uint32_t x)   -> std::string { return EncodeFixed(x); },
+            [](const std::uint64_t x)   -> std::string { return EncodeFixed(x); },
+            [](const double x)          -> std::string {
+                std::uint64_t bits;
+                std::memcpy(&bits, &x, sizeof(uint64_t));
+                return EncodeFixed(bits);
             },
-            [](const float x) {
-                std::ostringstream oss;
-                oss << std::setprecision(9) << x;
-                return oss.str();
+            [](const float x)           -> std::string {
+                std::uint32_t bits;
+                std::memcpy(&bits, &x, sizeof(uint32_t));
+                return EncodeFixed(bits);
             },
-            [](const std::string& s) { return s; },
-            [](const std::byte b) { return ToByteaHex(b); },
-            [](const timestamp& tp) { return ToTimestampString(tp); }
+            [](const std::string& s)    -> std::string { return s; },
+            [](const char* s)           -> std::string { return s ? std::string{s} : std::string{}; },
+            [](const std::byte b)       -> std::string { return {1, static_cast<char>(b)}; },
+            [](const timestamp& tp)     -> std::string {
+                using namespace std::chrono;
+                // PostgreSQL epoch starts at 2000-01-01 00:00:00 UTC (Unix epoch + 946684800s).
+                constexpr std::int64_t kPgEpochOffsetUs = 946684800LL * 1'000'000LL;
+                const auto us = duration_cast<microseconds>(tp.time_since_epoch()).count() - kPgEpochOffsetUs;
+                return EncodeFixed(us);
+            }
         }, v);
     }
 
@@ -170,24 +214,23 @@ namespace Database::internal {
         PgParamDetail out(query, params.size());
 
         for (std::size_t i = 0; i < params.size(); ++i) {
+            out.formats[i] = 1; // binary format for all params
             if (std::holds_alternative<std::nullptr_t>(params[i])) {
-                out.buffers[i] = nullptr; // SQL NULL
+                out.buffers[i] = nullptr; // SQL NULL — length and format are ignored by libpq
                 out.lengths[i] = 0;
-                out.formats[i] = 0;
                 continue;
             }
 
-            out.text[i] = ToPgText(params[i]);
-            out.buffers[i] = out.text[i].c_str();
-            out.lengths[i] = static_cast<int>(out.text[i].size());
-            out.formats[i] = 0; // text format
+            out.text[i]     = ToBinary(params[i]);
+            out.buffers[i]  = out.text[i].data();
+            out.lengths[i]  = static_cast<int>(out.text[i].size());
         }
 
         return out;
     }
 
     template <std::size_t N>
-    PgParamDetail MakePgParamBuffer(std::string_view query, const std::array<SupportedType, N>& params)
+    PgParamDetail MakePgParamBuffer(const std::string_view query, const std::array<SupportedType, N>& params)
     {
         return MakePgParamBuffer(query,std::span<const SupportedType>(params.data(), params.size()));
     }
