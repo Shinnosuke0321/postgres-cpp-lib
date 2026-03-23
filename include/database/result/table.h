@@ -8,11 +8,13 @@
 #include <unordered_map>
 #include <vector>
 #include "row.h"
+#include <libpq-fe.h>
 
 namespace database::result {
     struct result_deleter {
         void operator()(PGresult* result) const noexcept {
-            if (result) PQclear(result);
+            if (result)
+                PQclear(result);
         }
     };
 

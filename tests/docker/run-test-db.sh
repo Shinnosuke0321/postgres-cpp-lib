@@ -9,7 +9,7 @@ echo "Deleting test data"
 rm -rf ../data
 mkdir -p ../data
 
-echo "Pulling the latest image and start postgres locally on docker"
+echo "Pulling the latest image and start postgres locally"
 docker compose pull
 
 echo "Starting postgres"

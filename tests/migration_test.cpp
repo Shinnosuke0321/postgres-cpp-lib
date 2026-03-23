@@ -12,18 +12,18 @@ protected:
         setenv("POSTGRES_DB_URL", "postgresql://test_user:test_password@localhost:5432/test_db?sslmode=disable", 1);
 
         auto factory = std::make_shared<Core::Database::ConnectionFactory>();
-        factory->register_factory<database::Postgres>([]() -> Core::Database::ConnectionResult {
+        factory->register_factory<database::postgres_client>([]() -> Core::Database::ConnectionResult {
             std::optional<std::string> url = database::GetDatabaseUrl();
             if (!url) {
                 return std::unexpected(Core::Database::ConnectionError::MissingConfig("Postgres URI not provided"));
             }
-            auto pg_conn = std::make_unique<database::Postgres>(std::move(*url));
+            auto pg_conn = std::make_unique<database::postgres_client>(std::move(*url));
             if (auto result = pg_conn->connect(); !result) {
                 return std::unexpected(result.error());
             }
             return std::move(pg_conn);
         });
-        pg_pool = smart_ptr::make_intrusive<Core::Database::ConnectionPool<database::Postgres>>(factory);
+        pg_pool = smart_ptr::make_intrusive<Core::Database::ConnectionPool<database::postgres_client>>(factory);
         pg_pool->wait_for_warmup();
     }
 
@@ -31,7 +31,7 @@ protected:
         unsetenv("POSTGRES_DB_URL");
     }
 
-    smart_ptr::intrusive_ptr<Core::Database::ConnectionPool<database::Postgres>> pg_pool;
+    smart_ptr::intrusive_ptr<Core::Database::ConnectionPool<database::postgres_client>> pg_pool;
 };
 
 TEST_F(PGMigrationTest, WrongPathToSqlFilePassed) {

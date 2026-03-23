@@ -1,27 +1,17 @@
-CREATE TABLE IF NOT EXISTS test_tables (
-    id SERIAL PRIMARY KEY,
-    unnullable_text TEXT NOT NULL,
-    nullable_text TEXT,
+DROP TABLE IF EXISTS test_tables;
 
-    unnullable_varchar VARCHAR(255) NOT NULL,
-    nullable_varchar VARCHAR(255),
-
-    unnullable_float8 DOUBLE PRECISION NOT NULL,
-    nullable_float8 DOUBLE PRECISION,
-
-    unnullable_float4 REAL NOT NULL,
-    nullable_float4 REAL,
-
-    unnullable_bool BOOLEAN NOT NULL,
-    nullable_bool BOOLEAN,
-
-    unnullable_int16 INT2 NOT NULL,
-    nullable_int16 INT2,
-    unnullable_int32 INT4 NOT NULL,
-    nullable_int32 int4,
-    unnullable_int64 INT8 NOT NULL,
-    nullable_int64 INT8,
-
-    unnullable_timestamp TIMESTAMP WITH TIME ZONE NOT NULL default now(),
-    nullable_timestamp TIMESTAMP WITH TIME ZONE
+CREATE TABLE test_tables (
+    id         SERIAL          PRIMARY KEY,
+    col_bool   BOOLEAN,                    -- bool
+    col_int16  SMALLINT,                   -- int16_t
+    col_int32  INTEGER,                    -- int32_t
+    col_int64  BIGINT,                     -- int64_t
+    col_uint16 INTEGER,                    -- uint16_t (no native unsigned; INTEGER holds all values)
+    col_uint32 BIGINT,                     -- uint32_t (BIGINT holds all values)
+    col_uint64 NUMERIC(20, 0),             -- uint64_t (NUMERIC holds all values)
+    col_float  REAL,                       -- float
+    col_double DOUBLE PRECISION,           -- double
+    col_text   TEXT,                       -- const char*, char*, std::string (all nullable for nullptr_t)
+    col_byte   BYTEA,                      -- std::byte
+    col_ts     TIMESTAMP WITHOUT TIME ZONE -- database::timestamp (system_clock::time_point)
 );

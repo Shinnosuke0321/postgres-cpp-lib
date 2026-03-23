@@ -1,43 +1,41 @@
 //
 // Created by Shinnosuke Kawai on 4/19/25.
 //
-#include "database/postgres.h"
-
+#include "database/postgres_client.h"
+#include "database/transaction.h"
 
 namespace database {
-    std::expected<std::unique_ptr<Postgres>, Core::Database::ConnectionError> Postgres::ConnectionFactory() noexcept {
-        using Core::Database::ConnectionError;
-        std::optional<std::string> uri = GetDatabaseUrl();
-        if (!uri)
-            return std::unexpected(ConnectionError::MissingConfig("Postgres URI not provided"));
-        auto conn = std::make_unique<Postgres>(std::move(*uri), true);
-        if (std::expected<void, ConnectionError> result = conn->connect(); !result)
-            return std::unexpected(result.error());
-        return conn;
+    std::shared_ptr<transaction> postgres_client::create_transaction() {
+        auto txn = std::make_shared<transaction>(*this);
+        std::future<std::expected<result::table, sql_error>> begin_future = txn->execute("BEGIN");
+        if (const std::expected<result::table, sql_error> result = begin_future.get(); !result) {
+            return nullptr;
+        }
+        return txn;
     }
 
-    Postgres::Postgres(std::string&& uri)
+    postgres_client::postgres_client(std::string&& uri)
     : m_uri(std::move(uri))
     {}
 
-    Postgres::Postgres(std::string&& uri, const bool heartbeat_enabled)
+    postgres_client::postgres_client(std::string&& uri, const bool heartbeat_enabled)
     : m_uri(std::move(uri)),
       m_heartbeat_enabled(heartbeat_enabled)
     {}
 
-    Postgres::~Postgres() {
+    postgres_client::~postgres_client() {
         m_worker_thread.request_stop();
         m_cv.notify_all();
         if (m_worker_thread.joinable())
             m_worker_thread.join();
     }
-    std::expected<void, Core::Database::ConnectionError> Postgres::connect() noexcept {
+    std::expected<void, Core::Database::ConnectionError> postgres_client::connect() noexcept {
         using Core::Database::ConnectionError;
         PGconn* raw_conn = PQconnectdb(m_uri.c_str());
         if (!raw_conn) {
             return std::unexpected(ConnectionError::ConnectionFailed("Postgres connection failed"));
         }
-        UniquePGConn unique_conn(raw_conn);
+        unique_pg_conn unique_conn(raw_conn);
         if (PQstatus(unique_conn.get()) != CONNECTION_OK) {
             return std::unexpected(ConnectionError::ConnectionFailed(PQerrorMessage(unique_conn.get())));
         }
@@ -49,7 +47,7 @@ namespace database {
         return {};
     }
 
-    bool Postgres::is_connected() const noexcept {
+    bool postgres_client::is_connected() const noexcept {
         return m_connection.get() && PQstatus(m_connection.get()) == CONNECTION_OK;
     }
 }

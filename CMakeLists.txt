@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(PostgresLib STATIC
         src/postgres_priv.cpp
         src/postgres_pub.cpp
+        src/transaction.cpp
 )
 
 target_include_directories(PostgresLib

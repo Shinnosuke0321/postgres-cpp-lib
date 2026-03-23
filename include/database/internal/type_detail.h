@@ -11,41 +11,43 @@
 #include <string>
 #include <type_traits>
 #include <span>
+#include <variant>
+#include <vector>
 
 namespace database {
     using timestamp = std::chrono::system_clock::time_point;
-    using SupportedType = std::variant<std::nullptr_t,
-                                       bool,
-                                       int16_t, int32_t, int64_t, uint16_t, uint32_t, uint64_t,
-                                       double, float,
-                                       const char*, char*, std::string,
-                                       std::byte,
-                                       timestamp>;
+    using supported_type = std::variant<std::nullptr_t,
+                                        bool,
+                                        int16_t, int32_t, int64_t, uint16_t, uint32_t, uint64_t,
+                                        double, float,
+                                        const char*, char*, std::string,
+                                        std::vector<std::byte>,
+                                        timestamp>;
 
-    struct PgParamDetail {
+    struct pg_param_detail {
         std::string query;
         std::vector<std::string> text;      // size == n; empty string for NULL
         std::vector<const char*> buffers;    // size == n; nullptr for NULL
         std::vector<int> lengths;           // size == n
         std::vector<int> formats;           // size == n (all 0)
 
-        PgParamDetail() = default;
-        explicit PgParamDetail(const std::string_view query, const std::size_t n)
+        pg_param_detail() = default;
+        explicit pg_param_detail(const std::string_view query, const std::size_t n)
         : query(std::string{query}), text(n), buffers(n, nullptr), lengths(n, 0), formats(n, 0) {}
 
         [[nodiscard]] int count() const noexcept { return static_cast<int>(buffers.size()); }
 
-        PgParamDetail (const PgParamDetail&) = delete;
-        PgParamDetail& operator=(const PgParamDetail&) = delete;
+        pg_param_detail (const pg_param_detail&) = delete;
+        pg_param_detail& operator=(const pg_param_detail&) = delete;
 
-        PgParamDetail(PgParamDetail&& other) noexcept
+        pg_param_detail(pg_param_detail&& other) noexcept
         : query(std::move(other.query)),
           text(std::move(other.text)),
           buffers(std::move(other.buffers)),
           lengths(std::move(other.lengths)),
           formats(std::move(other.formats)) {}
 
-        PgParamDetail& operator=(PgParamDetail&& other) noexcept {
+        pg_param_detail& operator=(pg_param_detail&& other) noexcept {
             if (this != &other) {
                 query = std::move(other.query);
                 text = std::move(other.text);
@@ -63,7 +65,8 @@ namespace database::internal {
     constexpr bool IsSupported() noexcept {
         using D = std::decay_t<Param>;
         constexpr bool is_valid = std::is_same_v<D, std::nullptr_t> ||
-                                  std::is_same_v<D, std::byte> ||
+                                  std::is_same_v<D, std::vector<std::byte>> ||
+                                  std::is_same_v<D, std::span<const std::byte>> ||
                                   (std::is_integral_v<D> && !std::is_same_v<D, bool>) ||
                                   std::is_same_v<D, bool> || std::is_same_v<D, float> || std::is_same_v<D, double> ||
                                   std::is_same_v<D, std::string> || std::is_same_v<D, char*> || std::is_same_v<D, const char*> ||
@@ -72,44 +75,48 @@ namespace database::internal {
     };
 
     template<typename Integral>
-    constexpr SupportedType NormalizeIntegral(Integral data)
+    constexpr supported_type NormalizeIntegral(Integral data)
     {
         using D = std::decay_t<Integral>;
         static_assert(std::is_integral_v<D> && !std::is_same_v<D, bool>, "Integral type must be signed or unsigned");
         if constexpr (std::is_signed_v<D>) {
             if constexpr (sizeof(D) <= 2)
-                return SupportedType{ static_cast<std::int16_t>(data) };
+                return supported_type{ static_cast<std::int16_t>(data) };
             else if constexpr (sizeof(D) <= 4)
-                return SupportedType{ static_cast<std::int32_t>(data) };
+                return supported_type{ static_cast<std::int32_t>(data) };
             else
-                return SupportedType{ static_cast<std::int64_t>(data) };
+                return supported_type{ static_cast<std::int64_t>(data) };
         }
         else {
             if constexpr (sizeof(D) <= 2)
-                return SupportedType{ static_cast<std::uint16_t>(data) };
+                return supported_type{ static_cast<std::uint16_t>(data) };
             else if constexpr (sizeof(D) <= 4)
-                return SupportedType{ static_cast<std::uint32_t>(data) };
+                return supported_type{ static_cast<std::uint32_t>(data) };
             else
-                return SupportedType{ static_cast<std::uint64_t>(data) };
+                return supported_type{ static_cast<std::uint64_t>(data) };
         }
     }
 
     template<class Type>
-    constexpr SupportedType CreateSingleData(Type&& param)
+    constexpr supported_type CreateSingleData(Type&& param)
     {
-        static_assert(internal::IsSupported<Type>(), "Allowed types: integral (except bool), bool, float, double, std::string, string literal, Timestamp, std::byte.");
+        static_assert(internal::IsSupported<Type>(),
+            "Allowed types: integral (except bool), bool, float, double, std::string, string literal, Timestamp, vector of std::byte");
         using D = std::decay_t<Type>;
         if constexpr (std::is_integral_v<D> && !std::is_same_v<D, bool>) {
             return NormalizeIntegral(param);
         }
-        else if constexpr (std::is_same_v<D, std::string>) {
-            return SupportedType {std::forward<D>(param)};
+        else if constexpr (std::is_same_v<D, std::string> || std::is_same_v<D, std::vector<std::byte>>) {
+            return supported_type {std::forward<D>(param)};
         }
         else if constexpr (std::is_same_v<D, const char*> || std::is_same_v<D, char*>) {
-            return SupportedType {std::string(param)};
+            return supported_type {std::string(param)};
+        }
+        else if constexpr (std::is_same_v<D, std::span<const std::byte>>) {
+            return supported_type {std::vector<std::byte>(param.begin(), param.end())};
         }
         else {
-            return SupportedType {param};
+            return supported_type {param};
         }
     }
 }
@@ -121,18 +128,6 @@ namespace database::internal {
     struct Overloaded : Ts... { using Ts::operator()...; };
     template <class... Ts>
     Overloaded(Ts...) -> Overloaded<Ts...>;
-
-    inline std::string ToByteaHex(const std::byte b)
-    {
-        static constexpr char kHex[] = "0123456789abcdef";
-        const auto v = std::to_integer<unsigned>(b);
-        std::string out;
-        out.reserve(4);
-        out += "\\x";
-        out += kHex[(v >> 4) & 0xF];
-        out += kHex[v & 0xF];
-        return out;
-    }
 
     // Convert Timestamp to a simple ISO-ish UTC string: YYYY-MM-DD HH:MM:SSZ
     inline std::string ToTimestampString(const timestamp& tp)
@@ -175,7 +170,7 @@ namespace database::internal {
     // Encodes a SupportedType value into its PostgreSQL binary wire format.
     // Integers/floats: big-endian; text: raw UTF-8 bytes (no null terminator);
     // bool: 1 byte; byte: 1 byte; timestamp: int64 µs since PostgreSQL epoch (2000-01-01 UTC).
-    inline std::string ToBinary(const SupportedType& v)
+    inline std::string ToBinary(const supported_type& v)
     {
         return std::visit(Overloaded{
             [](std::nullptr_t)          -> std::string { return {}; },
@@ -198,7 +193,11 @@ namespace database::internal {
             },
             [](const std::string& s)    -> std::string { return s; },
             [](const char* s)           -> std::string { return s ? std::string{s} : std::string{}; },
-            [](const std::byte b)       -> std::string { return {1, static_cast<char>(b)}; },
+            [](const std::vector<std::byte>& bytes) -> std::string {
+                std::string out(bytes.size(), '\0');
+                std::memcpy(out.data(), bytes.data(), bytes.size());
+                return out;
+            },
             [](const timestamp& tp)     -> std::string {
                 using namespace std::chrono;
                 // PostgreSQL epoch starts at 2000-01-01 00:00:00 UTC (Unix epoch + 946684800s).
@@ -209,9 +208,9 @@ namespace database::internal {
         }, v);
     }
 
-    inline PgParamDetail MakePgParamBuffer(const std::string_view query, const std::span<const SupportedType> params)
+    inline pg_param_detail MakePgParamBuffer(const std::string_view query, const std::span<const supported_type> params)
     {
-        PgParamDetail out(query, params.size());
+        pg_param_detail out(query, params.size());
 
         for (std::size_t i = 0; i < params.size(); ++i) {
             out.formats[i] = 1; // binary format for all params
@@ -230,9 +229,9 @@ namespace database::internal {
     }
 
     template <std::size_t N>
-    PgParamDetail MakePgParamBuffer(const std::string_view query, const std::array<SupportedType, N>& params)
+    pg_param_detail MakePgParamBuffer(const std::string_view query, const std::array<supported_type, N>& params)
     {
-        return MakePgParamBuffer(query,std::span<const SupportedType>(params.data(), params.size()));
+        return MakePgParamBuffer(query,std::span<const supported_type>(params.data(), params.size()));
     }
 
 } // namespace Database::internal

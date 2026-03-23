@@ -1,39 +1,51 @@
 //
 // Created by Shinnosuke Kawai on 1/26/26.
 //
-#include <print>
-#include "database/postgres.h"
+#include "database/postgres_client.h"
 
 namespace database {
-    std::future<std::expected<result::table, PostgresErr>> Postgres::SendToWorker(PgParamDetail&& query_detail) const {
-        using Result = std::expected<result::table, PostgresErr>;
+
+    std::future<std::expected<result::table, sql_error>> postgres_client::SendToWorker(pg_param_detail&& query_detail) const {
+        using Result = std::expected<result::table, sql_error>;
         auto prom = std::make_shared<std::promise<Result>>();
         auto future = prom->get_future();
-        PGRequest request{std::move(query_detail)};
+        query_request request{std::move(query_detail)};
         request.on_success = [prom](result::table table) {
             try {
                 prom->set_value(std::move(table));
             } catch (...) {}
         };
-        request.on_error = [prom](const PostgresErr& err) {
+        request.on_error = [prom](const sql_error& err) {
             try {
                 prom->set_value(std::unexpected(err));
             } catch (...) {}
         };
         {
             std::lock_guard sl(m_mutex);
-            m_requests.push_back(std::move(request));
+            m_requests.emplace_back(std::move(request));
         }
         m_cv.notify_one();
         return future;
     }
 
-    void Postgres::QueryWorker(const std::stop_token &st) const noexcept {
+    void postgres_client::EnqueueAsync(pg_param_detail&& detail, result_callback&& callback, error_callback&& err_callback) const noexcept {
+        query_request request{};
+        request.detail = std::move(detail);
+        request.on_success = std::move(callback);
+        request.on_error = std::move(err_callback);
+        {
+            std::lock_guard sl(m_mutex);
+            m_requests.emplace_back(std::move(request));
+        }
+        m_cv.notify_one();
+    }
+
+    void postgres_client::QueryWorker(const std::stop_token &st) const noexcept {
         std::mt19937 rng(std::random_device{}());
         std::uniform_int_distribution heartbeat_sec(60, 120);
         auto next_heartbeat = std::chrono::steady_clock::now() + std::chrono::seconds(heartbeat_sec(rng));
         while (!st.stop_requested()) {
-            PGRequest request;
+            query_request item;
             {
                 std::unique_lock sl(m_mutex);
                 if (!m_heartbeat_enabled) {
@@ -44,9 +56,8 @@ namespace database {
                         sl.unlock();
 
                         constexpr std::string_view heartbeat_query = "SELECT 1";
-                        std::vector<std::string> empty_params{};
                         auto timeout = std::chrono::milliseconds(5000);
-                        PgParamDetail ping_detail{heartbeat_query, 0};
+                        pg_param_detail ping_detail{heartbeat_query, 0};
                         if (auto heart_beat = ExecuteWithRetry(ping_detail, timeout)) {
                             std::println("Postgres: heartbeat successful");
                         } else {
@@ -60,47 +71,47 @@ namespace database {
                     });
                 }
                 if (st.stop_requested()) {
-                    std::deque<PGRequest> pending_reqs;
+                    std::deque<query_request> pending_reqs;
                     pending_reqs.swap(m_requests);
                     sl.unlock();
-                    for (auto& pending : pending_reqs) {
-                        if (pending.on_error)
-                            pending.on_error(PostgresErr::ShuttingDown("worker thread stopped"));
+                    for (auto& pending_item : pending_reqs) {
+                        if (pending_item.on_error)
+                            pending_item.on_error(sql_error::ShuttingDown("worker thread stopped"));
                     }
                     break;
                 }
                 if (m_requests.empty()) {
                     continue;
                 }
-                request = std::move(m_requests.front());
+                item = std::move(m_requests.front());
                 m_requests.pop_front();
             }
 
-            std::expected<result::unique_pg_result, PostgresErr> result = ExecuteWithRetry(request.detail,std::chrono::milliseconds(5000));
+            std::expected<result::unique_pg_result, sql_error> result = ExecuteWithRetry(item.detail, std::chrono::milliseconds(5000));
             if (!result) {
-                request.on_error(result.error());
+                if (item.on_error)
+                    item.on_error(result.error());
                 continue;
             }
-            result::table pg_res{std::move(result.value())};
-            request.on_success(std::move(pg_res));
+            if (item.on_success)
+                item.on_success(result::table{std::move(result.value())});
         }
     }
 
-    std::expected<result::unique_pg_result, PostgresErr> Postgres::ExecuteWithRetry(const PgParamDetail& param_detail, const std::chrono::milliseconds reconnect_timeout) const noexcept {
+    std::expected<result::unique_pg_result, sql_error> postgres_client::ExecuteWithRetry(const pg_param_detail& param_detail, const std::chrono::milliseconds reconnect_timeout) const noexcept {
         for (int attempts = 1; attempts <= 2; ++attempts) {
             if (!is_connected()) {
-                // LOG_DEBUG << "Connection is dead";
-                if (std::optional<PostgresErr> error = AttemptReconnect(reconnect_timeout)) {
+                if (std::optional<sql_error> error = AttemptReconnect(reconnect_timeout)) {
                     return std::unexpected(*error);
                 }
             }
 
-            std::expected<result::unique_pg_result, PostgresErr> exe_res = ExecuteQuery(param_detail);
+            std::expected<result::unique_pg_result, sql_error> exe_res = ExecuteQuery(param_detail);
             if (exe_res) {
                 return exe_res;
             }
-            PostgresErr& err = exe_res.error();
-            if (err.get_type() == PostgresErr::Type::BadConnection && attempts == 1) {
+            sql_error& err = exe_res.error();
+            if (err.get_type() == sql_error::Type::BadConnection && attempts == 1) {
                 if (auto error = AttemptReconnect(reconnect_timeout)) {
                     return std::unexpected(*error);
                 }
@@ -108,13 +119,13 @@ namespace database {
             }
             return std::unexpected(err);
         }
-        return std::unexpected(PostgresErr::QueryFailed("unreachable"));
+        return std::unexpected(sql_error::QueryFailed("unreachable"));
     }
 
-    std::expected<result::unique_pg_result, PostgresErr> Postgres::ExecuteQuery(const PgParamDetail& param_detail) const noexcept {
+    std::expected<result::unique_pg_result, sql_error> postgres_client::ExecuteQuery(const pg_param_detail& param_detail) const noexcept {
         const int sock = PQsocket(m_connection.get());
         if (sock < 0) {
-            return std::unexpected(PostgresErr::SocketFailed("failed to get socket"));
+            return std::unexpected(sql_error::SocketFailed("failed to get socket"));
         }
         const int ok = PQsendQueryParams(
             m_connection.get(),
@@ -128,7 +139,7 @@ namespace database {
 
         if (ok == 0) {
             const char* msg = PQerrorMessage(m_connection.get());
-            return std::unexpected(PostgresErr::BadConnection(msg));
+            return std::unexpected(sql_error::BadConnection(msg));
         }
 
         if (auto poll_out = CheckForPollOut(sock); !poll_out) {
@@ -141,9 +152,9 @@ namespace database {
         return ConsumeResult();
     }
 
-    std::optional<PostgresErr> Postgres::AttemptReconnect(const std::chrono::milliseconds timeout) const noexcept {
+    std::optional<sql_error> postgres_client::AttemptReconnect(const std::chrono::milliseconds timeout) const noexcept {
         if (!PQresetStart(m_connection.get()))
-            return PostgresErr::FailedToReconnect("PQresetStart failed");
+            return sql_error::FailedToReconnect("PQresetStart failed");
 
         const auto deadline = std::chrono::steady_clock::now() + timeout;
 
@@ -151,23 +162,23 @@ namespace database {
         while (true) {
             const auto now = std::chrono::steady_clock::now();
             if (now >= deadline)
-                return PostgresErr::FailedToReconnect("timeout");
+                return sql_error::FailedToReconnect("timeout");
 
             const PostgresPollingStatusType st = PQresetPoll(m_connection.get());
             if (st == PGRES_POLLING_OK) {
                 if (PQsetnonblocking(m_connection.get(), 1) != 0) {
                     const char* err = PQerrorMessage(m_connection.get());
-                    return PostgresErr::FailedToReconnect(err ? err :"PQsetnonblocking failed");
+                    return sql_error::FailedToReconnect(err ? err :"PQsetnonblocking failed");
                 }
                 // LOG_DEBUG << "Reconnected";
                 return std::nullopt;
             }
             if (st == PGRES_POLLING_FAILED)
-                return PostgresErr::FailedToReconnect("PQresetPoll failed");
+                return sql_error::FailedToReconnect("PQresetPoll failed");
 
             const int sock = PQsocket(m_connection.get());
             if (sock < 0)
-                return PostgresErr::FailedToReconnect("PQsocket failed");
+                return sql_error::FailedToReconnect("PQsocket failed");
             short events = 0;
             if (st == PGRES_POLLING_READING)
                 events = POLLIN;
@@ -178,17 +189,17 @@ namespace database {
             const int remaining = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count());
             const int pr = poll(&pfd, 1, remaining);
             if (pr <= 0)
-                return PostgresErr::FailedToReconnect("poll failed");
+                return sql_error::FailedToReconnect("poll failed");
             if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))
-                return PostgresErr::FailedToReconnect("socket error");
+                return sql_error::FailedToReconnect("socket error");
         }
     }
 
-    std::expected<void, PostgresErr> Postgres::CheckForPollOut(const int& socket) const noexcept {
+    std::expected<void, sql_error> postgres_client::CheckForPollOut(const int& socket) const noexcept {
         while (true) {
             const int flush = PQflush(m_connection.get());
             if (flush < 0) {
-                return std::unexpected(PostgresErr::SocketFailed("failed to flush socket"));
+                return std::unexpected(sql_error::SocketFailed("failed to flush socket"));
             }
             if (flush == 0)
                 return {};
@@ -196,31 +207,31 @@ namespace database {
             pollfd pfd = {socket, POLLOUT, 0};
             const int poll_res = poll(&pfd, 1, 5000);
             if (poll_res < 0) {
-                return std::unexpected(PostgresErr::SocketFailed("Pollout event failed"));
+                return std::unexpected(sql_error::SocketFailed("Pollout event failed"));
             }
             if (poll_res == 0) {
-                return std::unexpected(PostgresErr::SocketFailed("socket timed out"));
+                return std::unexpected(sql_error::SocketFailed("socket timed out"));
             }
             if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-                return std::unexpected(PostgresErr::SocketFailed("Socket failed"));
+                return std::unexpected(sql_error::SocketFailed("Socket failed"));
             }
         }
     }
 
-    std::expected<void, PostgresErr> Postgres::CheckForPollIn(const int& socket) const noexcept {
+    std::expected<void, sql_error> postgres_client::CheckForPollIn(const int& socket) const noexcept {
         while (true) {
             pollfd pfd = {socket, POLLIN, 0};
             const int poll_res = poll(&pfd, 1, 5000);
             if (poll_res < 0) {
-                return std::unexpected(PostgresErr::SocketFailed("failed to poll socket"));
+                return std::unexpected(sql_error::SocketFailed("failed to poll socket"));
             }
             if (poll_res == 0) {
-                return std::unexpected(PostgresErr::SocketFailed("socket timed out"));
+                return std::unexpected(sql_error::SocketFailed("socket timed out"));
             }
 
             if (PQconsumeInput(m_connection.get()) == 0) {
                 const char* err = PQerrorMessage(m_connection.get());
-                return std::unexpected(PostgresErr::BadConnection(err));
+                return std::unexpected(sql_error::BadConnection(err));
             }
 
             if (PQisBusy(m_connection.get())) {
@@ -230,7 +241,7 @@ namespace database {
         }
     }
 
-    std::expected<result::unique_pg_result, PostgresErr> Postgres::ConsumeResult() const noexcept {
+    std::expected<result::unique_pg_result, sql_error> postgres_client::ConsumeResult() const noexcept {
         result::unique_pg_result result = nullptr;
         while (PGresult* r = PQgetResult(m_connection.get())) {
             result::unique_pg_result temp(r);
@@ -241,14 +252,14 @@ namespace database {
             } else {
                 // Make sure we drain remaining results before returning error (optional but clean)
                 std::string msg = PQresultErrorMessage(temp.get());
-                PostgresErr err = PostgresErr::QueryFailed(PQresultErrorMessage(temp.get()));
+                sql_error err = sql_error::QueryFailed(PQresultErrorMessage(temp.get()));
                 while (PGresult* r2 = PQgetResult(m_connection.get()))
                     PQclear(r2);
                 return std::unexpected(std::move(err));
             }
         }
         if (!result) {
-            return std::unexpected(PostgresErr::QueryFailed("no results received"));
+            return std::unexpected(sql_error::QueryFailed("no results received"));
         }
         return std::move(result);
     }
