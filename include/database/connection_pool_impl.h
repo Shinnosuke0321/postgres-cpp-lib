@@ -80,17 +80,22 @@ namespace Core::Database {
 
     template<class T>
     requires std::derived_from<T, IConnection>
-    void ConnectionPool<T>::wait_for_warmup() const noexcept {
+    void ConnectionPool<T>::wait_for_warmup() noexcept {
         using namespace std::literals;
         while (!m_pool_ready.load(std::memory_order_acquire)) {
             m_pool_ready.wait(false, std::memory_order_acquire);
         }
+        for (auto& t : m_threads) {
+            if (t.joinable()) t.join();
+        }
+        m_threads.clear();
     }
 
     template<class T> requires std::derived_from<T, IConnection>
     ConnectionPool<T>::~ConnectionPool() {
         for (auto& t : m_threads) {
             t.request_stop();
+            if (t.joinable()) t.join();
         }
     }
 
