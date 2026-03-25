@@ -9,18 +9,16 @@ option(BUILD_SHARED_LIBS "Build PostgresLib as a shared library" OFF)
 
 find_package(PostgreSQL REQUIRED)
 
-# FindPostgreSQL sets IMPORTED_LOCATION but not per-config variants, causing
-# "IMPORTED_LOCATION not set for configuration X" errors on some platforms.
-if(TARGET PostgreSQL::PostgreSQL)
-    get_target_property(_pq_lib PostgreSQL::PostgreSQL IMPORTED_LOCATION)
-    if(_pq_lib)
-        set_target_properties(PostgreSQL::PostgreSQL PROPERTIES
-            IMPORTED_LOCATION_DEBUG          "${_pq_lib}"
-            IMPORTED_LOCATION_RELEASE        "${_pq_lib}"
-            IMPORTED_LOCATION_RELWITHDEBINFO "${_pq_lib}"
-            IMPORTED_LOCATION_MINSIZEREL     "${_pq_lib}"
-        )
-    endif()
+# FindPostgreSQL sets IMPORTED_LOCATION_RELEASE but not other config variants,
+# causing "IMPORTED_LOCATION not set for configuration X" errors.
+if(TARGET PostgreSQL::PostgreSQL AND PostgreSQL_LIBRARY)
+    set_target_properties(PostgreSQL::PostgreSQL PROPERTIES
+        IMPORTED_LOCATION                "${PostgreSQL_LIBRARY}"
+        IMPORTED_LOCATION_DEBUG          "${PostgreSQL_LIBRARY}"
+        IMPORTED_LOCATION_RELEASE        "${PostgreSQL_LIBRARY}"
+        IMPORTED_LOCATION_RELWITHDEBINFO "${PostgreSQL_LIBRARY}"
+        IMPORTED_LOCATION_MINSIZEREL     "${PostgreSQL_LIBRARY}"
+    )
 endif()
 
 add_subdirectory(dependencies/core)
