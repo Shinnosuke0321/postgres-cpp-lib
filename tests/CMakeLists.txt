@@ -12,10 +12,16 @@ set(test_headers
         test_values.h
         test_queries.h
 )
+add_executable(SqlParser_tests sql_parser_test.cpp)
 add_executable(PostgresSQL_tests ${test_headers} postgres_test.cpp)
 add_executable(Migration_tests migration_test.cpp)
 add_executable(PostgresError_tests postgres_error_test.cpp)
 add_executable(PostgresTransaction_tests ${test_headers} postgres_transaction_test.cpp)
+
+target_link_libraries(SqlParser_tests PRIVATE
+        PostgresLib::PostgresLib
+        GTest::gtest_main
+)
 
 target_link_libraries(PostgresSQL_tests PRIVATE
         PostgresLib::PostgresLib
@@ -44,6 +50,7 @@ target_link_libraries(PostgresTransaction_tests PRIVATE
 )
 
 include(GoogleTest)
+gtest_discover_tests(SqlParser_tests)
 gtest_discover_tests(Migration_tests)
 gtest_discover_tests(PostgresSQL_tests)
 gtest_discover_tests(PostgresError_tests)

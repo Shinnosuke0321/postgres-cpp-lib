@@ -6,13 +6,13 @@
 
 TEST(PostgresErrTest, GetTypeReturnsCorrectEnum) {
     using E = database::sql_error;
-    EXPECT_EQ(E::SqlFileError("x").get_type(),       E::Type::SqlFileError);
-    EXPECT_EQ(E::FailedToConnect().get_type(),        E::Type::ConnectionFailed);
-    EXPECT_EQ(E::FailedToReconnect("x").get_type(),  E::Type::ReconnectFailed);
-    EXPECT_EQ(E::BadConnection("x").get_type(),       E::Type::BadConnection);
-    EXPECT_EQ(E::SocketFailed("x").get_type(),        E::Type::SocketFailed);
-    EXPECT_EQ(E::QueryFailed("x").get_type(),         E::Type::QueryFailed);
-    EXPECT_EQ(E::ShuttingDown("x").get_type(),        E::Type::ShuttingDown);
+    EXPECT_EQ(E::SqlFileError("x").get_type(),       E::type::SqlFileError);
+    EXPECT_EQ(E::FailedToConnect().get_type(),        E::type::ConnectionFailed);
+    EXPECT_EQ(E::FailedToReconnect("x").get_type(),  E::type::ReconnectFailed);
+    EXPECT_EQ(E::BadConnection("x").get_type(),       E::type::BadConnection);
+    EXPECT_EQ(E::SocketFailed("x").get_type(),        E::type::SocketFailed);
+    EXPECT_EQ(E::QueryFailed("x").get_type(),         E::type::QueryFailed);
+    EXPECT_EQ(E::ShuttingDown("x").get_type(),        E::type::ShuttingDown);
 }
 
 TEST(PostgresErrTest, ToStrContainsTypeName) {

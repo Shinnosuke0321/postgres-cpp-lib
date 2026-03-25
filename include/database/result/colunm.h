@@ -3,6 +3,8 @@
 //
 
 #pragma once
+#include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <optional>
 #include <vector>
@@ -20,6 +22,7 @@ namespace database::result {
         constexpr Oid Varchar     = 1043;
         constexpr Oid Bpchar      = 1042;
         constexpr Oid Bytea       = 17;
+        constexpr Oid Numeric     = 1700;
         constexpr Oid Timestamp   = 1114;
         constexpr Oid Timestamptz = 1184;
     }
@@ -155,6 +158,73 @@ namespace database::result {
             constexpr int64_t kPgEpochUs = 946684800LL * 1'000'000LL;
             return timestamp{std::chrono::microseconds(us + kPgEpochUs)};
         }
+        return std::nullopt;
+    }
+
+    // col_uint16 is stored as INTEGER (Int4) — PostgreSQL has no unsigned type.
+    template<>
+    inline std::optional<uint16_t> colum::as<uint16_t>() const {
+        if (is_null)
+            return std::nullopt;
+        if (oid == pg_oid::Int4 && data.size() == 4)
+            return static_cast<uint16_t>(pg_detail::ReadBigEndian<int32_t>(data.data()));
+        return std::nullopt;
+    }
+
+    // col_uint32 is stored as BIGINT (Int8).
+    template<>
+    inline std::optional<uint32_t> colum::as<uint32_t>() const {
+        if (is_null)
+            return std::nullopt;
+        if (oid == pg_oid::Int8 && data.size() == 8)
+            return static_cast<uint32_t>(pg_detail::ReadBigEndian<int64_t>(data.data()));
+        return std::nullopt;
+    }
+
+    // col_uint64 is stored as NUMERIC(20,0).
+    // PostgreSQL NUMERIC binary layout (all fields big-endian int16):
+    //   ndigits | weight | sign | dscale | digits[ndigits]
+    // Each digit is a base-10000 group, most-significant first.
+    // sign == 0 means positive; trailing zero digit groups may be omitted,
+    // but weight encodes the full magnitude.
+    template<>
+    inline std::optional<uint64_t> colum::as<uint64_t>() const {
+        if (is_null)
+            return std::nullopt;
+        if (oid != pg_oid::Numeric || data.size() < 8)
+            return std::nullopt;
+
+        const auto* p = data.data();
+        const auto ndigits = pg_detail::ReadBigEndian<int16_t>(p);
+        const auto weight  = pg_detail::ReadBigEndian<int16_t>(p + 2);
+        const auto sign    = pg_detail::ReadBigEndian<uint16_t>(p + 4);
+        // dscale (p + 6) unused for integer values
+
+        if (sign != 0)  // negative or NaN — not representable as uint64_t
+            return std::nullopt;
+        if (ndigits == 0)
+            return uint64_t{0};
+        if (data.size() < static_cast<std::size_t>(8 + ndigits * 2))
+            return std::nullopt;
+
+        uint64_t result = 0;
+        for (int16_t i = 0; i < ndigits; ++i) {
+            const auto digit = pg_detail::ReadBigEndian<uint16_t>(p + 8 + i * 2);
+            result = result * 10000 + digit;
+        }
+        // Multiply by 10000 for each trailing zero group that was elided.
+        const int trailing = weight - (ndigits - 1);
+        for (int t = 0; t < trailing; ++t)
+            result *= 10000;
+        return result;
+    }
+
+    template<>
+    inline std::optional<std::vector<std::byte>> colum::as<std::vector<std::byte>>() const {
+        if (is_null)
+            return std::nullopt;
+        if (oid == pg_oid::Bytea)
+            return data;  // binary result format: raw bytes, no hex encoding
         return std::nullopt;
     }
 }

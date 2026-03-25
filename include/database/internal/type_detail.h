@@ -88,10 +88,18 @@ namespace database::internal {
                 return supported_type{ static_cast<std::int64_t>(data) };
         }
         else {
-            if constexpr (sizeof(D) <= 2)
-                return supported_type{ static_cast<std::uint16_t>(data) };
-            else if constexpr (sizeof(D) <= 4)
-                return supported_type{ static_cast<std::uint32_t>(data) };
+            // Unsigned types are widened to the next signed type because PostgreSQL
+            // has no native unsigned integers:
+            //   uint8_t → int16_t (SMALLINT, 2 bytes)
+            //   uint16_t → int32_t (INTEGER, 4 bytes)
+            //   uint32_t → int64_t (BIGINT, 8 bytes)
+            //   uint64_t → uint64_t (kept; ToBinary encodes it as NUMERIC binary)
+            if constexpr (sizeof(D) == 1)
+                return supported_type{ static_cast<std::int16_t>(data) };
+            else if constexpr (sizeof(D) == 2)
+                return supported_type{ static_cast<std::int32_t>(data) };
+            else if constexpr (sizeof(D) == 4)
+                return supported_type{ static_cast<std::int64_t>(data) };
             else
                 return supported_type{ static_cast<std::uint64_t>(data) };
         }
@@ -107,7 +115,7 @@ namespace database::internal {
             return NormalizeIntegral(param);
         }
         else if constexpr (std::is_same_v<D, std::string> || std::is_same_v<D, std::vector<std::byte>>) {
-            return supported_type {std::forward<D>(param)};
+            return supported_type {std::forward<Type>(param)};
         }
         else if constexpr (std::is_same_v<D, const char*> || std::is_same_v<D, char*>) {
             return supported_type {std::string(param)};
@@ -167,6 +175,43 @@ namespace database::internal {
         return out;
     }
 
+    // Encodes a uint64_t as a PostgreSQL NUMERIC binary value (big-endian).
+    // Layout: ndigits(2) | weight(2) | sign(2) | dscale(2) | digits[ndigits](2 each)
+    // Each digit is a base-10000 group, most significant first.
+    inline std::string EncodeNumericUint64(const std::uint64_t value) noexcept {
+        if (value == 0) {
+            // ndigits=0, weight=0, sign=NUMERIC_POS=0, dscale=0
+            return {8, '\0'};
+        }
+
+        std::vector<std::uint16_t> raw;
+        std::uint64_t v = value;
+        while (v > 0) {
+            raw.push_back(static_cast<std::uint16_t>(v % 10000));
+            v /= 10000;
+        }
+        std::reverse(raw.begin(), raw.end()); // most-significant first
+
+        const auto total_groups = static_cast<std::int16_t>(raw.size());
+        const auto weight = static_cast<int16_t>(total_groups - 1);
+
+        // Strip trailing zero digits (valid for integer NUMERIC, dscale=0)
+        while (raw.size() > 1 && raw.back() == 0)
+            raw.pop_back();
+
+        const auto digitCount = static_cast<std::int16_t>(raw.size());
+
+        std::string out;
+        out.reserve(8 + digitCount * 2);
+        out += EncodeFixed(digitCount);
+        out += EncodeFixed(weight);
+        out += EncodeFixed(std::int16_t{0}); // sign = NUMERIC_POS
+        out += EncodeFixed(std::int16_t{0}); // dscale = 0 (integer)
+        for (const auto d : raw)
+            out += EncodeFixed(d);
+        return out;
+    }
+
     // Encodes a SupportedType value into its PostgreSQL binary wire format.
     // Integers/floats: big-endian; text: raw UTF-8 bytes (no null terminator);
     // bool: 1 byte; byte: 1 byte; timestamp: int64 µs since PostgreSQL epoch (2000-01-01 UTC).
@@ -180,7 +225,7 @@ namespace database::internal {
             [](const std::int64_t x)    -> std::string { return EncodeFixed(x); },
             [](const std::uint16_t x)   -> std::string { return EncodeFixed(x); },
             [](const std::uint32_t x)   -> std::string { return EncodeFixed(x); },
-            [](const std::uint64_t x)   -> std::string { return EncodeFixed(x); },
+            [](const std::uint64_t x)   -> std::string { return EncodeNumericUint64(x); },
             [](const double x)          -> std::string {
                 std::uint64_t bits;
                 std::memcpy(&bits, &x, sizeof(uint64_t));

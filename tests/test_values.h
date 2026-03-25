@@ -47,21 +47,23 @@ namespace database {
         };
     }
 
-    // Same as make_test_values() but col_text and col_byte are NULL,
-    // exercising std::nullptr_t support.
-    inline test_row make_null_test_values() {
+    // Returns values that differ from make_test_values() in every column,
+    // suitable for verifying UPDATE queries changed all fields.
+    inline test_row make_updated_values() {
         return {
-            .col_bool   = true,
-            .col_int16  = int16_t{42},
-            .col_int32  = int32_t{123456},
-            .col_int64  = int64_t{9876543210LL},
-            .col_uint16 = uint16_t{65000},
-            .col_uint32 = uint32_t{4000000000U},
-            .col_uint64 = uint64_t{18000000000000000000ULL},
-            .col_float  = 3.14f,
-            .col_double = 2.718281828,
-            .col_text   = std::nullopt,
-            .col_byte   = std::nullopt,
+            .col_bool   = false,
+            .col_int16  = int16_t{-99},
+            .col_int32  = int32_t{654321},
+            .col_int64  = int64_t{1111111111LL},
+            .col_uint16 = uint16_t{1000},
+            .col_uint32 = uint32_t{999999999U},
+            .col_uint64 = uint64_t{1000000000000000000ULL},
+            .col_float  = 1.23f,
+            .col_double = 1.41421356237,
+            .col_text   = "updated value",
+            .col_byte   = std::vector{
+                std::byte{0xCA}, std::byte{0xFE}, std::byte{0xBA}, std::byte{0xBE}
+            },
             .col_ts     = std::chrono::system_clock::now(),
         };
     }

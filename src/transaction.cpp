@@ -23,6 +23,8 @@ namespace database {
             auto worker_future = m_executor->SendToWorker(std::move(commit));
             if (auto result = worker_future.get(); !result) {
                 std::println(stderr, "{}", result.error().to_str());
+            } else {
+                std::println(stdout, "Transaction committed");
             }
         }
     }

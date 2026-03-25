@@ -9,74 +9,75 @@
 
 namespace database {
     struct sql_error: Core::BaseError {
-        enum class Type {
+        enum class type {
             ConnectionFailed, ReconnectFailed, QueryFailed, FlushFailed, PollFailed,
             ConsumeFailed, SocketFailed, Busy, TimeOut, ShuttingDown,
             BadConnection, SqlFileError, TransactionRolledBack,
         };
 
-        static sql_error SqlFileError(const char* str) noexcept {return sql_error{Type::SqlFileError, str};}
-        static sql_error FailedToConnect() noexcept {return sql_error{Type::ConnectionFailed, "Failed to connect to postgres"};}
-        static sql_error FailedToReconnect(const char* msg) noexcept {return sql_error{Type::ReconnectFailed, msg};}
-        static sql_error BadConnection(const char* str) noexcept {return sql_error{Type::BadConnection, str};}
-        static sql_error SocketFailed(const char* str) noexcept { return sql_error{Type::SocketFailed, str};}
-        static sql_error QueryFailed(const char* str) noexcept { return sql_error{Type::QueryFailed, str};}
-        static sql_error ShuttingDown(const char* str) noexcept { return sql_error{Type::ShuttingDown, str};}
-        static sql_error TransactionRolledBack() noexcept { return sql_error{Type::TransactionRolledBack, "transaction already rolled back"};}
+        static sql_error SqlFileError(const char* str) noexcept {return sql_error{type::SqlFileError, str};}
+        static sql_error FailedToConnect() noexcept {return sql_error{type::ConnectionFailed, "Failed to connect to postgres"};}
+        static sql_error FailedToReconnect(const char* msg) noexcept {return sql_error{type::ReconnectFailed, msg};}
+        static sql_error BadConnection(const char* str) noexcept {return sql_error{type::BadConnection, str};}
+        static sql_error SocketFailed(const char* str) noexcept { return sql_error{type::SocketFailed, str};}
+        static sql_error QueryFailed(const char* str) noexcept { return sql_error{type::QueryFailed, str};}
+        static sql_error ShuttingDown(const char* str) noexcept { return sql_error{type::ShuttingDown, str};}
+        static sql_error TransactionRolledBack() noexcept { return sql_error{type::TransactionRolledBack, "transaction already rolled back"};}
 
-        Type get_type() const noexcept {return err;}
+        type get_type() const noexcept {return err;}
 
         std::string to_str() const noexcept override {
             std::string_view code_str;
             switch (err) {
-                case Type::ConnectionFailed:
+                case type::ConnectionFailed:
                     code_str = "ConnectionFailed";
                     break;
-                case Type::QueryFailed:
+                case type::QueryFailed:
                     code_str = "QueryFailed";
                     break;
-                case Type::FlushFailed:
+                case type::FlushFailed:
                     code_str = "FlushFailed";
                     break;
-                case Type::PollFailed:
+                case type::PollFailed:
                     code_str = "PollFailed";
                     break;
-                case Type::ConsumeFailed:
+                case type::ConsumeFailed:
                     code_str = "ConsumeFailed";
                     break;
-                case Type::SocketFailed:
+                case type::SocketFailed:
                     code_str = "SocketFailed";
                     break;
-                case Type::Busy:
+                case type::Busy:
                     code_str = "Busy";
                     break;
-                case Type::TimeOut:
+                case type::TimeOut:
                     code_str = "TimeOut";
                     break;
-                case Type::ShuttingDown:
+                case type::ShuttingDown:
                     code_str = "ShuttingDown";
                     break;
-                case Type::BadConnection:
+                case type::BadConnection:
                     code_str = "BadConnection";
                     break;
-                case Type::ReconnectFailed:
+                case type::ReconnectFailed:
                     code_str = "ReconnectFailed";
                     break;
-                case Type::SqlFileError:
+                case type::SqlFileError:
                     code_str = "SqlFileError";
                     break;
-                case Type::TransactionRolledBack:
+                case type::TransactionRolledBack:
                     code_str = "TransactionRolledBack";
                     break;
             }
+            std::erase(message, '\n');
             return std::format("Postgres: {} {}", code_str, message);
         }
         ~sql_error() noexcept override = default;
     private:
-        explicit sql_error(const Type err, std::string&& message): err(err), message(std::move(message)){}
-        explicit sql_error(const Type err, const char* message): err(err), message(message){}
+        explicit sql_error(const type err, std::string&& message): err(err), message(std::move(message)){}
+        explicit sql_error(const type err, const char* message): err(err), message(message){}
     private:
-        Type err{};
-        std::string message;
+        type err{};
+        mutable std::string message;
     };
 }

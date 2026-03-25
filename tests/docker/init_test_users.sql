@@ -1,7 +1,7 @@
 DROP TABLE IF EXISTS test_tables;
 
 CREATE TABLE test_tables (
-    id         SERIAL          PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     col_bool   BOOLEAN,                    -- bool
     col_int16  SMALLINT,                   -- int16_t
     col_int32  INTEGER,                    -- int32_t

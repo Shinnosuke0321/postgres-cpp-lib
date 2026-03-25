@@ -10,6 +10,7 @@ namespace database {
         auto prom = std::make_shared<std::promise<Result>>();
         auto future = prom->get_future();
         query_request request{std::move(query_detail)};
+        request.direct_callback = true;
         request.on_success = [prom](result::table table) {
             try {
                 prom->set_value(std::move(table));
@@ -38,6 +39,14 @@ namespace database {
             m_requests.emplace_back(std::move(request));
         }
         m_cv.notify_one();
+    }
+
+    void postgres_client::PostCallback(std::function<void()> task) const noexcept {
+        {
+            std::lock_guard lk(m_cb_mutex);
+            m_cb_queue.push_back(std::move(task));
+        }
+        m_cb_cv.notify_one();
     }
 
     void postgres_client::QueryWorker(const std::stop_token &st) const noexcept {
@@ -75,8 +84,12 @@ namespace database {
                     pending_reqs.swap(m_requests);
                     sl.unlock();
                     for (auto& pending_item : pending_reqs) {
-                        if (pending_item.on_error)
-                            pending_item.on_error(sql_error::ShuttingDown("worker thread stopped"));
+                        auto cb = std::move(pending_item.on_error);
+                        if (pending_item.direct_callback) {
+                            cb(sql_error::ShuttingDown("worker thread stopped"));
+                        } else {
+                            PostCallback([cb = std::move(cb)] { cb(sql_error::ShuttingDown("worker thread stopped")); });
+                        }
                     }
                     break;
                 }
@@ -89,12 +102,39 @@ namespace database {
 
             std::expected<result::unique_pg_result, sql_error> result = ExecuteWithRetry(item.detail, std::chrono::milliseconds(5000));
             if (!result) {
-                if (item.on_error)
-                    item.on_error(result.error());
+                auto cb  = std::move(item.on_error);
+                sql_error& err = result.error();
+                if (item.direct_callback) {
+                    cb(err);
+                } else {
+                    PostCallback([cb = std::move(cb), err] { cb(err); });
+                }
                 continue;
             }
-            if (item.on_success)
-                item.on_success(result::table{std::move(result.value())});
+            auto cb = std::move(item.on_success);
+            if (item.direct_callback) {
+                cb(result::table{std::move(result.value())});
+            } else {
+                auto shared_table = std::make_shared<result::table>(std::move(result.value()));
+                PostCallback([cb = std::move(cb), shared_table]() mutable {
+                    cb(std::move(*shared_table));
+                });
+            }
+        }
+    }
+
+    void postgres_client::CallbackWorker(const std::stop_token& st) const noexcept {
+        while (true) {
+            std::function<void()> task;
+            {
+                std::unique_lock lk(m_cb_mutex);
+                m_cb_cv.wait(lk, [&] { return st.stop_requested() || !m_cb_queue.empty(); });
+                if (m_cb_queue.empty())
+                    break; // stop requested and queue fully drained
+                task = std::move(m_cb_queue.front());
+                m_cb_queue.pop_front();
+            }
+            task();
         }
     }
 
@@ -111,7 +151,7 @@ namespace database {
                 return exe_res;
             }
             sql_error& err = exe_res.error();
-            if (err.get_type() == sql_error::Type::BadConnection && attempts == 1) {
+            if (err.get_type() == sql_error::type::BadConnection && attempts == 1) {
                 if (auto error = AttemptReconnect(reconnect_timeout)) {
                     return std::unexpected(*error);
                 }

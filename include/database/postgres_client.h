@@ -16,6 +16,7 @@
 #include <condition_variable>
 #include <thread>
 #include <deque>
+#include <functional>
 #include "transaction.h"
 
 namespace database {
@@ -60,8 +61,8 @@ namespace database {
 
     class postgres_client : public Core::Database::IConnection, public query_executor {
     public:
-        explicit postgres_client(std::string&& uri);
-        postgres_client(std::string&& uri, bool heartbeat_enabled);
+        explicit postgres_client(std::string&& uri, std::size_t num_cb_threads = 2);
+        postgres_client(std::string&& uri, bool heartbeat_enabled, std::size_t num_cb_threads = 2);
         ~postgres_client() override;
 
         postgres_client() = delete;
@@ -95,6 +96,9 @@ namespace database {
             pg_param_detail detail;
             result_callback on_success;
             error_callback on_error;
+            // When true the DB worker calls on_success/on_error directly (execute() path).
+            // When false they are dispatched through the callback pool (execute_async() path).
+            bool direct_callback = false;
 
             query_request() = default;
             explicit query_request(pg_param_detail&& detail) noexcept: detail(std::move(detail)) {}
@@ -123,6 +127,8 @@ namespace database {
         std::future<std::expected<result::table, sql_error>> SendToWorker(pg_param_detail&&) const override;
         void EnqueueAsync(pg_param_detail&&, result_callback&&, error_callback&&) const noexcept override;
         void QueryWorker(const std::stop_token &st) const noexcept;
+        void PostCallback(std::function<void()> task) const noexcept;
+        void CallbackWorker(const std::stop_token &st) const noexcept;
         std::expected<result::unique_pg_result, sql_error> ExecuteWithRetry(const pg_param_detail& param_detail, std::chrono::milliseconds reconnect_timeout) const noexcept;
         std::expected<result::unique_pg_result, sql_error> ExecuteQuery(const pg_param_detail& param_detail) const noexcept;
 
@@ -140,5 +146,11 @@ namespace database {
         mutable std::condition_variable m_cv;
         mutable std::deque<query_request> m_requests;
         mutable std::jthread m_worker_thread;
+
+        std::size_t m_num_cb_threads;
+        mutable std::mutex m_cb_mutex;
+        mutable std::condition_variable m_cb_cv;
+        mutable std::deque<std::function<void()>> m_cb_queue;
+        mutable std::vector<std::jthread> m_cb_workers;
     };
 }
