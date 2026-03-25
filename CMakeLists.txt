@@ -8,6 +8,21 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(BUILD_SHARED_LIBS "Build PostgresLib as a shared library" OFF)
 
 find_package(PostgreSQL REQUIRED)
+
+# FindPostgreSQL sets IMPORTED_LOCATION but not per-config variants, causing
+# "IMPORTED_LOCATION not set for configuration X" errors on some platforms.
+if(TARGET PostgreSQL::PostgreSQL)
+    get_target_property(_pq_lib PostgreSQL::PostgreSQL IMPORTED_LOCATION)
+    if(_pq_lib)
+        set_target_properties(PostgreSQL::PostgreSQL PROPERTIES
+            IMPORTED_LOCATION_DEBUG          "${_pq_lib}"
+            IMPORTED_LOCATION_RELEASE        "${_pq_lib}"
+            IMPORTED_LOCATION_RELWITHDEBINFO "${_pq_lib}"
+            IMPORTED_LOCATION_MINSIZEREL     "${_pq_lib}"
+        )
+    endif()
+endif()
+
 add_subdirectory(dependencies/core)
 
 add_library(PostgresLib
