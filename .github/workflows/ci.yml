@@ -143,7 +143,7 @@ jobs:
           # Help CMake find the Homebrew PostgreSQL on macOS
           if [ "${{ runner.os }}" = "macOS" ]; then
             PG_PREFIX="$(brew --prefix postgresql@18)"
-            PG_HINT="-DPostgreSQL_ROOT=${PG_PREFIX} -DPostgreSQL_LIBRARY=${PG_PREFIX}/lib/libpq.dylib -DPostgreSQL_INCLUDE_DIR=${PG_PREFIX}/include"
+            PG_HINT="-DCMAKE_PREFIX_PATH=${PG_PREFIX}"
           fi
 
           # Use default VS generator on Windows (avoids Ninja PATH issues)
