@@ -140,11 +140,7 @@ jobs:
             CLANG_CXX_FLAGS="-DCMAKE_CXX_FLAGS=-stdlib=${{ matrix.flag }}"
           fi
 
-          # Help CMake find the Homebrew PostgreSQL on macOS
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            PG_PREFIX="$(brew --prefix postgresql@18)"
-            PG_HINT="-DCMAKE_PREFIX_PATH=${PG_PREFIX}"
-          fi
+          # pg_config (from postgresql@18/bin already in PATH) handles discovery in CMakeLists.txt
 
           # Use default VS generator on Windows (avoids Ninja PATH issues)
           if [ "${{ runner.os }}" = "Windows" ]; then
