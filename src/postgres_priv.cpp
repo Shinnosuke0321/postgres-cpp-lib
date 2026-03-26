@@ -6,8 +6,11 @@
 #define poll WSAPoll
 #endif
 
-namespace database {
+namespace {
+    thread_local bool tl_is_callback_thread = false;
+}
 
+namespace database {
     std::future<std::expected<result::table, sql_error>> postgres_client::SendToWorker(pg_param_detail&& query_detail) const {
         using Result = std::expected<result::table, sql_error>;
         auto prom = std::make_shared<std::promise<Result>>();
@@ -45,6 +48,10 @@ namespace database {
     }
 
     void postgres_client::PostCallback(std::function<void()> task) const noexcept {
+        if (tl_is_callback_thread) {
+            task();
+            return;
+        }
         {
             std::lock_guard lk(m_cb_mutex);
             m_cb_queue.push_back(std::move(task));
@@ -127,6 +134,7 @@ namespace database {
     }
 
     void postgres_client::CallbackWorker(const std::stop_token& st) const noexcept {
+        tl_is_callback_thread = true;
         while (true) {
             std::function<void()> task;
             {

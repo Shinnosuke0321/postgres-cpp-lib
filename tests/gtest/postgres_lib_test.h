@@ -34,6 +34,7 @@ inline void apply_changes_to_rows(const std::shared_ptr<database::transaction>& 
               col_uint64,col_float,col_double,
               col_text, col_byte,col_ts] = database::make_updated_values();
         auto shared_pms = std::make_shared<std::promise<std::expected<void, database::sql_error>>>();
+        std::future<std::expected<void, database::sql_error>> future = shared_pms->get_future();
         std::println("Updating row with id: {}", id);
         transaction_ptr->execute_async(
             "UPDATE test_tables SET "
@@ -50,7 +51,7 @@ inline void apply_changes_to_rows(const std::shared_ptr<database::transaction>& 
             col_uint16,col_uint32,col_uint64,col_float,
             col_double,col_text.value(),col_byte.value(),col_ts,
             id);
-        auto result = shared_pms->get_future().get();
+        auto result = future.get();
         ASSERT_TRUE(result) << result.error().to_str();
     }
 }

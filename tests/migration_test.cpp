@@ -27,12 +27,12 @@ TEST_F(PostgresLibTest, IdempotentMigrationSucceeds) {
 }
 
 TEST_F(PostgresLibTest, InvalidSqlFileReturnsQueryFailed) {
-    const std::filesystem::path temp_path = "/tmp/invalid_migration_test.sql";
+    const std::filesystem::path temp_path = std::filesystem::temp_directory_path() / "invalid_migration_test.sql";
     {
         std::ofstream tmp(temp_path);
         tmp << "THIS IS NOT VALID SQL;";
     }
-    auto result = database::Migrate(postgres_pool, temp_path);
+    database::migration_error result = database::Migrate(postgres_pool, temp_path);
     std::filesystem::remove(temp_path);
 
     ASSERT_TRUE(result);

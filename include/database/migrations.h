@@ -15,13 +15,13 @@
 
 namespace database {
 
-    struct PGMigrationError: Core::BaseError {
-        PGMigrationError() = default;
-        ~PGMigrationError() override = default;
+    struct migration_error: Core::BaseError {
+        migration_error() = default;
+        ~migration_error() override = default;
 
-        explicit PGMigrationError(sql_error&& err)
+        explicit migration_error(sql_error&& err)
             : m_error(std::move(err)) {}
-        explicit PGMigrationError(Core::Database::ConnectionError&& conn_err)
+        explicit migration_error(Core::Database::ConnectionError&& conn_err)
             : m_error(std::move(conn_err)) {}
 
         explicit operator bool() const noexcept { return m_error.has_value(); }
@@ -35,10 +35,10 @@ namespace database {
         std::optional<ErrorVariant> m_error = std::nullopt;
     };
 
-    inline PGMigrationError Migrate(smart_ptr::intrusive_ptr<Core::Database::ConnectionPool<postgres_client>> pool, const std::filesystem::path& path) noexcept {
+    inline migration_error Migrate(smart_ptr::intrusive_ptr<Core::Database::ConnectionPool<postgres_client>> pool, const std::filesystem::path& path) noexcept {
         std::ifstream file(path);
         if (!file.is_open()) {
-            return PGMigrationError(sql_error::SqlFileError("Failed to open sql file"));
+            return migration_error(sql_error::SqlFileError("Failed to open sql file"));
         }
         const std::string sql(std::istreambuf_iterator<char>(file), {});
         const auto statements = internal::ParseStatements(sql);
@@ -46,14 +46,14 @@ namespace database {
         using PGClient = Core::Database::ConnectionManager<postgres_client>;
         auto acquire_result = pool->acquire();
         if (!acquire_result) {
-            return PGMigrationError(std::move(acquire_result.error()));
+            return migration_error(std::move(acquire_result.error()));
         }
         PGClient& client = acquire_result.value();
 
         for (const auto& stmt : statements) {
             auto future = client->execute(stmt);
             if (auto result = future.get(); !result) {
-                return PGMigrationError(std::move(result.error()));
+                return migration_error(std::move(result.error()));
             }
         }
         return {};
