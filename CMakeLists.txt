@@ -51,6 +51,7 @@ target_compile_features(PostgresLib PUBLIC cxx_std_23)
 target_link_libraries(PostgresLib PUBLIC
         PostgreSQL::PostgreSQL
         DbConnectionPool::DbConnectionPool
+        $<$<PLATFORM_ID:Windows>:ws2_32>
 )
 
 target_include_directories(PostgresLib

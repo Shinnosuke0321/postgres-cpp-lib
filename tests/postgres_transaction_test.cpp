@@ -1,12 +1,7 @@
 //
 // Created by Shinnosuke Kawai on 3/18/26.
 //
-#include <database/connection_pool.h>
-#include <database/connection_factory.h>
 #include "gtest/postgres_lib_test.h"
-#include "gtest/test_values.h"
-#include <database/postgres_client.h>
-#include <database/transaction.h>
 
 using PGClient = Core::Database::ConnectionManager<database::postgres_client>;
 
