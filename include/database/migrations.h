@@ -40,7 +40,7 @@ namespace database {
         if (!file.is_open()) {
             return PGMigrationError(sql_error::SqlFileError("Failed to open sql file"));
         }
-        const std::string sql(std::istreambuf_iterator(file), {});
+        const std::string sql(std::istreambuf_iterator<char>(file), {});
         const auto statements = internal::ParseStatements(sql);
 
         using PGClient = Core::Database::ConnectionManager<postgres_client>;

@@ -3,74 +3,14 @@
 //
 #include <database/connection_pool.h>
 #include <database/connection_factory.h>
-#include <gtest/gtest.h>
-#include "test_values.h"
+#include "gtest/postgres_lib_test.h"
+#include "gtest/test_values.h"
 #include <database/postgres_client.h>
 #include <database/transaction.h>
 
 using PGClient = Core::Database::ConnectionManager<database::postgres_client>;
 
-class PostgresTest : public testing::Test {
-protected:
-    void SetUp() override {
-        setenv("POSTGRES_DB_URL", "postgresql://test_user:test_password@localhost:5432/test_db?sslmode=disable", 1);
-        auto factory = std::make_shared<Core::Database::ConnectionFactory>();
-        factory->register_factory<database::postgres_client>([]() -> Core::Database::ConnectionResult {
-            std::optional<std::string> url = database::GetDatabaseUrl();
-            if (!url) {
-                return std::unexpected(Core::Database::ConnectionError::MissingConfig("Postgres URI not provided"));
-            }
-            auto pg_conn = std::make_unique<database::postgres_client>(std::move(*url));
-            if (std::expected<void, Core::Database::ConnectionError> result = pg_conn->connect(); !result) {
-                return std::unexpected(result.error());
-            }
-            return std::move(pg_conn);
-        });
-        Core::Database::PoolConfig config;
-        config.is_eager = true;
-        postgres_pool = smart_ptr::make_intrusive<Core::Database::ConnectionPool<database::postgres_client>>(factory);
-        postgres_pool->wait_for_warmup();
-    }
-
-    static void apply_changes_to_rows(const std::shared_ptr<database::transaction>& transaction_ptr, const database::result::table& table) {
-        for (const auto& row : table.rows()) {
-            std::optional<int32_t> id_opt = row["id"].as<int32_t>();
-            EXPECT_TRUE(id_opt) << "id is not present in the table";
-            int32_t id = id_opt.value();
-            auto [col_bool,col_int16,col_int32,
-                  col_int64,col_uint16,col_uint32,
-                  col_uint64,col_float,col_double,
-                  col_text, col_byte,col_ts] = database::make_updated_values();
-            auto shared_pms = std::make_shared<std::promise<std::expected<void, database::sql_error>>>();
-            std::println("Updating row with id: {}", id);
-            transaction_ptr->execute_async(
-                "UPDATE test_tables SET "
-                "col_bool=$1, col_int16=$2, col_int32=$3, col_int64=$4, "
-                "col_uint16=$5, col_uint32=$6, col_uint64=$7, col_float=$8, "
-                "col_double=$9, col_text=$10, col_byte=$11, col_ts=$12 "
-                "WHERE id=$13",
-                [shared_pms](const database::result::table&) { shared_pms->set_value({}); },
-                [transaction_ptr, shared_pms](const database::sql_error& error) {
-                    transaction_ptr->rollback();
-                    shared_pms->set_value(std::unexpected(error));
-                },
-                col_bool,col_int16,col_int32,col_int64,
-                col_uint16,col_uint32,col_uint64,col_float,
-                col_double,col_text.value(),col_byte.value(),col_ts,
-                id);
-            auto result = shared_pms->get_future().get();
-            ASSERT_TRUE(result) << result.error().to_str();
-        }
-    }
-
-    void TearDown() override {
-        unsetenv("POSTGRES_DB_URL");
-    }
-
-    smart_ptr::intrusive_ptr<Core::Database::ConnectionPool<database::postgres_client>> postgres_pool;
-};
-
-TEST_F(PostgresTest, Transaction_Commit) {
+TEST_F(PostgresLibTest, Transaction_Commit) {
     auto acquired = postgres_pool->acquire();
     ASSERT_TRUE(acquired) << acquired.error().to_str();
     PGClient& client = acquired.value();
@@ -126,7 +66,7 @@ TEST_F(PostgresTest, Transaction_Commit) {
     ASSERT_EQ(rows_before + 2, rows_after);
 }
 
-TEST_F(PostgresTest, Transaction_RollbackOnQueryFailure) {
+TEST_F(PostgresLibTest, Transaction_RollbackOnQueryFailure) {
     auto acquired = postgres_pool->acquire();
     ASSERT_TRUE(acquired) << acquired.error().to_str();
 
@@ -182,7 +122,7 @@ TEST_F(PostgresTest, Transaction_RollbackOnQueryFailure) {
     EXPECT_EQ(rows_after, rows_before);
 }
 
-TEST_F(PostgresTest, Transaction_ManualRollback) {
+TEST_F(PostgresLibTest, Transaction_ManualRollback) {
     auto acquired = postgres_pool->acquire();
     ASSERT_TRUE(acquired) << acquired.error().to_str();
 
@@ -230,7 +170,7 @@ TEST_F(PostgresTest, Transaction_ManualRollback) {
     EXPECT_EQ(rows_after, rows_before);
 }
 
-TEST_F(PostgresTest, Transaction_DestructorAutoCommit) {
+TEST_F(PostgresLibTest, Transaction_DestructorAutoCommit) {
     auto acquired = postgres_pool->acquire();
     ASSERT_TRUE(acquired) << acquired.error().to_str();
 
@@ -270,7 +210,7 @@ TEST_F(PostgresTest, Transaction_DestructorAutoCommit) {
     EXPECT_GT(after_result.value().size(), rows_before+1);
 }
 
-TEST_F(PostgresTest, NestedAsyncQueries_AutoCommitTransaction) {
+TEST_F(PostgresLibTest, NestedAsyncQueries_AutoCommitTransaction) {
     auto acquired = postgres_pool->acquire();
     ASSERT_TRUE(acquired) << acquired.error().to_str();
     {
@@ -293,7 +233,7 @@ TEST_F(PostgresTest, NestedAsyncQueries_AutoCommitTransaction) {
     }
 }
 
-TEST_F(PostgresTest, FutureQueries_AutoCommitTransaction) {
+TEST_F(PostgresLibTest, FutureQueries_AutoCommitTransaction) {
     auto acquired = postgres_pool->acquire();
     ASSERT_TRUE(acquired) << acquired.error().to_str();
     {

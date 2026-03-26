@@ -9,12 +9,13 @@ if (NOT GTest_FOUND)
     FetchContent_MakeAvailable(googletest)
 endif ()
 set(test_headers
-        test_values.h
-        test_queries.h
+        gtest/postgres_lib_test.h
+        gtest/test_values.h
+        gtest/test_queries.h
 )
 add_executable(SqlParser_tests sql_parser_test.cpp)
-add_executable(PostgresSQL_tests ${test_headers} postgres_test.cpp)
-add_executable(Migration_tests migration_test.cpp)
+add_executable(PostgresSQL_tests ${test_headers} postgres_query_test.cpp)
+add_executable(Migration_tests ${test_headers} migration_test.cpp)
 add_executable(PostgresError_tests postgres_error_test.cpp)
 add_executable(PostgresTransaction_tests ${test_headers} postgres_transaction_test.cpp)
 
