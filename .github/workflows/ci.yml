@@ -111,8 +111,10 @@ jobs:
         shell: pwsh
         run: |
           $svc = Get-Service -Name "postgresql-x64-*" | Select-Object -First 1
-          Start-Service $svc.Name
-          Start-Sleep 5
+          if ($svc.Status -ne 'Running') {
+            Start-Service $svc.Name
+            Start-Sleep 5
+          }
           $env:PGPASSWORD = ""
           psql -U postgres -h localhost -c "CREATE USER test_user WITH PASSWORD 'test_password';"
           psql -U postgres -h localhost -c "CREATE DATABASE test_db OWNER test_user;"
