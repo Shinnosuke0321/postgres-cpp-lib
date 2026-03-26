@@ -111,19 +111,11 @@ jobs:
         uses: ikalnytskyi/action-setup-postgres@v8
         id: postgres # Assign an ID to access outputs
         with:
-            username: test_user
-            password: test_password
-            database: test_db
-            postgres-version: "16"
-            port: 5432
-
-      - name: Use PostgreSQL
-        # The action sets environment variables (e.g., PGSERVICE)
-        # or an output connection-uri for easy access.
-        run: |
-        # Use the connection URI output in your subsequent commands
-          psql ${{ steps.postgres.outputs.connection-uri }} -c "SELECT 1"
-        shell: bash # Use bash shell which is available on Windows runners
+          username: test_user
+          password: test_password
+          database: test_db
+          postgres-version: "16"
+          port: 5432
 
       - name: Configure
         shell: bash
