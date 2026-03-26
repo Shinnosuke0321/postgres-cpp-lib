@@ -2,6 +2,9 @@
 // Created by Shinnosuke Kawai on 1/26/26.
 //
 #include "database/postgres_client.h"
+#ifdef _WIN32
+#define poll WSAPoll
+#endif
 
 namespace database {
 

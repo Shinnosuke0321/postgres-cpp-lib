@@ -139,8 +139,6 @@ jobs:
             CLANG_CXX_FLAGS="-DCMAKE_CXX_FLAGS=-stdlib=${{ matrix.flag }}"
           fi
 
-          # pg_config (from postgresql@18/bin already in PATH) handles discovery in CMakeLists.txt
-
           # Use default VS generator on Windows (avoids Ninja PATH issues)
           if [ "${{ runner.os }}" = "Windows" ]; then
             GENERATOR=""

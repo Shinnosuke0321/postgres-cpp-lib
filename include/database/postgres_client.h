@@ -9,7 +9,11 @@
 #include <utility>
 #include <optional>
 #include <print>
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <sys/poll.h>
+#endif
 #include <random>
 #include <format>
 #include <mutex>
