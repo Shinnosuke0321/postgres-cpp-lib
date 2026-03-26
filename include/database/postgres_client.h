@@ -109,7 +109,8 @@ namespace database {
             query_request(query_request&& other) noexcept
             : detail(std::move(other.detail)),
               on_success(std::move(other.on_success)),
-              on_error(std::move(other.on_error)) {
+              on_error(std::move(other.on_error)),
+              direct_callback(other.direct_callback) {
                 other.on_success = nullptr;
                 other.on_error = nullptr;
             }
@@ -118,6 +119,7 @@ namespace database {
                     detail = std::move(other.detail);
                     on_success = std::move(other.on_success);
                     on_error = std::move(other.on_error);
+                    direct_callback = other.direct_callback;
                     other.on_success = nullptr;
                     other.on_error = nullptr;
                 }

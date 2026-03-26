@@ -41,6 +41,7 @@ namespace database {
             };
             std::unique_lock lock(m_mutex);
             if (m_rollback_sent) {
+                lock.unlock();
                 on_error(sql_error::TransactionRolledBack());
                 return;
             }
