@@ -229,6 +229,64 @@ TEST_F(PostgresLibTest, AsyncTransactionUsedAfterRolledback) {
     }
 }
 
+TEST_F(PostgresLibTest, TransactionDeepNestedQueries) {
+    auto acquired = postgres_pool->acquire();
+    ASSERT_TRUE(acquired) << acquired.error().to_str();
+    {
+        PGClient& client = acquired.value();
+        auto txn = client->create_transaction();
+        ASSERT_FALSE(!txn) << "Transaction should be created";
+        auto shared_pms = std::make_shared<std::promise<std::expected<void, database::sql_error>>>();
+        auto future = shared_pms->get_future();
+        constexpr std::string_view insert_1 = INSERT_QUERY;
+        database::test_row test_row_1 = database::make_test_values();
+        // top-level async call
+        std::println("Running nested async call");
+        txn->execute_async(
+            insert_1,
+            [shared_pms, txn](const database::result::table&) {
+                constexpr std::string_view insert_2 = INSERT_QUERY;
+                database::test_row test_row_2 = database::make_test_values();
+                // middle-level call
+                txn->execute_async(
+                    insert_2,
+                    [shared_pms, txn](const database::result::table&) {
+                        constexpr std::string_view insert_3 = INSERT_QUERY;
+                        database::test_row test_row_3 = database::make_test_values();
+                        // lowest-level call
+                        txn->execute_async(
+                            insert_3,
+                            [shared_pms, txn](const database::result::table&) {
+                                std::println("The third row inserted! Reach the bottom");
+                                shared_pms->set_value({});
+                            },
+                            [shared_pms](const database::sql_error& error) {
+                                shared_pms->set_value(std::unexpected(error));
+                            },
+                            COLUMN_DATA(test_row_3)
+                        );
+                    },
+                    [shared_pms](const database::sql_error& error) {
+                        shared_pms->set_value(std::unexpected(error));
+                    },
+                    COLUMN_DATA(test_row_2)
+                );
+            },
+            [shared_pms](const database::sql_error& error) {
+                shared_pms->set_value(std::unexpected(error));
+            },
+            COLUMN_DATA(test_row_1));
+
+        std::println("Waiting for the nested async call to finish...");
+        std::expected<void, database::sql_error> result = future.get();
+        ASSERT_TRUE(result) << result.error().to_str();
+        std::println("Nested async call finished!");
+        std::println("Committing the transaction...");
+        txn->commit();
+        std::println("Transaction committed!");
+    }
+}
+
 int main(int argc, char *argv[]) {
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

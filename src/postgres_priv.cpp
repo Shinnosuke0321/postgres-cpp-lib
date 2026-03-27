@@ -57,10 +57,10 @@ namespace database {
             auto done = std::make_shared<std::atomic_bool>(false);
             std::jthread temp([done, task = std::move(task)]() mutable noexcept {
                 tl_is_callback_thread = true;
+                std::println("The callback pool is saturated. Running on temp thread");
                 task();
                 done->store(true, std::memory_order_release);
             });
-
             {
                 std::lock_guard lk(m_temp_cb_mutex);
                 reap_overflow_threads(m_overflow_cb_threads);
