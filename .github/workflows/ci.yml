@@ -156,4 +156,4 @@ jobs:
         run: cmake --build build --config ${{ matrix.build_type }}
 
       - name: Test
-        run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure
+        run: ctest --verbose --test-dir build -C ${{ matrix.build_type }} --output-on-failure
