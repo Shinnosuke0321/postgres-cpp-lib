@@ -66,8 +66,8 @@ namespace database {
 
     class postgres_client : public Core::Database::IConnection, public query_executor {
     public:
-        explicit postgres_client(std::string&& uri, std::size_t num_cb_threads = 2);
-        postgres_client(std::string&& uri, bool heartbeat_enabled, std::size_t num_cb_threads = 2);
+        explicit postgres_client(std::string&& uri, std::size_t num_cb_threads = 1);
+        postgres_client(std::string&& uri, bool heartbeat_enabled, std::size_t num_cb_threads = 1);
         ~postgres_client() override;
 
         postgres_client() = delete;

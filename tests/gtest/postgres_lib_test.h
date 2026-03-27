@@ -109,29 +109,40 @@ inline void queries_after_rolled_back(database::shared_transaction& shared_txn, 
     }
 }
 
-inline void apply_changes_to_rows(const std::shared_ptr<database::transaction>& transaction_ptr, const database::result::table& table) {
+inline void apply_changes_to_rows(
+    const std::shared_ptr<database::transaction>& transaction_ptr,
+    const database::result::table& table,
+    const std::shared_ptr<std::promise<std::expected<void, database::sql_error>>>& shared_promise)
+{
+    auto count = std::make_shared<std::atomic_uint32_t>(0);
+    size_t rows_count = table.rows().size();
     for (const auto& row : table.rows()) {
         std::optional<int32_t> id_opt = row["id"].as<int32_t>();
         EXPECT_TRUE(id_opt) << "id is not present in the table";
         int32_t id = id_opt.value();
         auto TEST_COLUMN = database::make_updated_values();
-        auto shared_pms = std::make_shared<std::promise<std::expected<void, database::sql_error>>>();
-        std::future<std::expected<void, database::sql_error>> future = shared_pms->get_future();
         std::println("Updating row with id: {}", id);
         transaction_ptr->execute_async(
             UPDATE_QUERY_ID,
-            [shared_pms](const database::result::table&) { shared_pms->set_value({}); },
-            [transaction_ptr, shared_pms](const database::sql_error& error) {
+            [count, shared_promise, rows_count](const database::result::table&) {
+                if (count->fetch_add(1, std::memory_order_relaxed) == rows_count - 1)
+                    shared_promise->set_value({});
+            },
+            [transaction_ptr, shared_promise](const database::sql_error& error) {
                 transaction_ptr->rollback();
-                shared_pms->set_value(std::unexpected(error));
+                shared_promise->set_value(std::unexpected(error));
             },
             COlUMN_VALUES,id);
-        auto result = future.get();
-        ASSERT_TRUE(result) << result.error().to_str();
     }
 }
 
-inline void apply_changes_to_rows(Core::Database::ConnectionManager<database::postgres_client>& client, const database::result::table& table) {
+inline void apply_changes_to_rows(
+    Core::Database::ConnectionManager<database::postgres_client>& client,
+    const database::result::table& table,
+    const std::shared_ptr<std::promise<std::expected<void, database::sql_error>>>& shared_promise)
+{
+    auto count = std::make_shared<std::atomic_uint32_t>(0);
+    size_t rows_count = table.rows().size();
     for (const auto& row : table.rows()) {
         std::optional<int32_t> id_opt = row["id"].as<int32_t>();
         EXPECT_TRUE(id_opt) << "id is not present in the table";
@@ -140,14 +151,17 @@ inline void apply_changes_to_rows(Core::Database::ConnectionManager<database::po
               col_int64,col_uint16,col_uint32,
               col_uint64,col_float,col_double,
               col_text, col_byte,col_ts] = database::make_updated_values();
-        auto shared_pms = std::make_shared<std::promise<std::expected<void, database::sql_error>>>();
         client->execute_async(
             UPDATE_QUERY_ID,
-            [shared_pms](const database::result::table&) { shared_pms->set_value({}); },
-            [shared_pms](const database::sql_error& error) { shared_pms->set_value(std::unexpected(error)); },
+            [shared_promise, count, rows_count](const database::result::table&) {
+                if (count->fetch_add(1, std::memory_order_relaxed) == rows_count - 1) {
+                    shared_promise->set_value({});
+                }
+            },
+            [shared_promise](const database::sql_error& error) {
+                shared_promise->set_value(std::unexpected(error));
+            },
             COlUMN_VALUES,id);
-        auto result = shared_pms->get_future().get();
-        ASSERT_TRUE(result) << result.error().to_str();
     }
 }
 

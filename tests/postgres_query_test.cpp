@@ -121,17 +121,80 @@ TEST_F(PostgresLibTest, NestedAsyncQuery_Update) {
         "FROM test_tables";
 
     auto shared_pms = std::make_shared<std::promise<std::expected<void, database::sql_error>>>();
+    auto future = shared_pms->get_future();
     client->execute_async(
         select_all_query,
         [&client, shared_pms](const database::result::table& result) {
-            apply_changes_to_rows(client, result);
-            shared_pms->set_value({});
+            apply_changes_to_rows(client, result, shared_pms);
         },
         [shared_pms](const database::sql_error& error) {
             shared_pms->set_value(std::unexpected(error));
         });
-    auto result = shared_pms->get_future().get();
+    auto result = future.get();
     ASSERT_TRUE(result) << result.error().to_str();
+}
+#include <atomic>
+#include <chrono>
+
+TEST_F(PostgresLibTest, AsyncCallbackPoolSaturation_UsesOverflowThread) {
+    auto connect_result = postgres_pool->acquire();
+    ASSERT_TRUE(connect_result) << connect_result.error().to_str();
+
+    std::mutex gate_mutex;
+    std::condition_variable gate_cv;
+    bool release_first_callback = false;
+
+    std::promise<void> first_callback_entered_promise;
+    std::future<void> first_callback_entered = first_callback_entered_promise.get_future();
+
+    std::promise<std::expected<void, database::sql_error>> second_done_promise;
+    std::future<std::expected<void, database::sql_error>> second_done = second_done_promise.get_future();
+
+    std::atomic<bool> first_callback_started = false;
+    std::atomic<bool> second_callback_finished_while_first_blocked = false;
+
+    PGClient& client = connect_result.value();
+    client->execute_async(
+        "SELECT 1",
+        [&](const database::result::table&) {
+            first_callback_started.store(true, std::memory_order_release);
+            first_callback_entered_promise.set_value();
+
+            std::unique_lock lk(gate_mutex);
+            gate_cv.wait(lk, [&] { return release_first_callback; });
+        },
+        [](const database::sql_error& error) {
+            FAIL() << error.to_str();
+        });
+
+    ASSERT_EQ(first_callback_entered.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+
+    client->execute_async(
+        "SELECT 1",
+        [&](const database::result::table&) {
+            if (first_callback_started.load(std::memory_order_acquire)) {
+                second_callback_finished_while_first_blocked.store(true, std::memory_order_release);
+            }
+            second_done_promise.set_value({});
+        },
+        [&](const database::sql_error& error) {
+            second_done_promise.set_value(std::unexpected(error));
+        });
+
+    auto second_status = second_done.wait_for(std::chrono::seconds(5));
+    ASSERT_EQ(second_status, std::future_status::ready)
+        << "Second callback did not complete while the only callback worker was blocked";
+
+    auto second_result = second_done.get();
+    ASSERT_TRUE(second_result) << second_result.error().to_str();
+    ASSERT_TRUE(second_callback_finished_while_first_blocked.load(std::memory_order_acquire))
+        << "Expected second callback to complete via overflow thread while first callback was blocked";
+
+    {
+        std::lock_guard lk(gate_mutex);
+        release_first_callback = true;
+    }
+    gate_cv.notify_one();
 }
 
 int main(int argc, char *argv[]) {

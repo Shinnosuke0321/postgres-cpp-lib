@@ -160,16 +160,16 @@ TEST_F(PostgresLibTest, TransactionNestedAsyncQueries) {
         auto txn = client->create_transaction();
         ASSERT_FALSE(!txn) << "Transaction should be created";
         auto shared_pms = std::make_shared<std::promise<std::expected<void, database::sql_error>>>();
+        auto future = shared_pms->get_future();
         txn->execute_async(
             select_query,
             [shared_pms, txn](const database::result::table& table) {
-                apply_changes_to_rows(txn, table);
-                shared_pms->set_value({});
+                apply_changes_to_rows(txn, table, shared_pms);
             },
             [shared_pms](const database::sql_error& error) {
                 shared_pms->set_value(std::unexpected(error));
             });
-        auto result = shared_pms->get_future().get();
+        auto result = future.get();
         ASSERT_TRUE(result) << result.error().to_str();
         txn->commit();
     }
