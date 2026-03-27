@@ -12,26 +12,47 @@ namespace database {
         std::unique_lock lock(other.m_mutex);
         m_executor = other.m_executor;
         other.m_executor = nullptr;
-        m_rollback_sent = other.m_rollback_sent;
-        other.m_rollback_sent = true;
+        m_state = other.m_state;
     }
 
     transaction::~transaction() {
+        std::unique_lock lock(m_mutex);
+        if (m_state != state::active || m_executor == nullptr) {
+            return;
+        }
+        m_state = state::rollback;
+        lock.unlock();
+
+        pg_param_detail rollback_cmd("ROLLBACK", 0);
+        auto future = m_executor->SendToWorker(std::move(rollback_cmd));
+        auto result = future.get();
+        if (!result) {
+            std::println(stderr, "{}", result.error().to_str());
+        }
+    }
+
+    void transaction::commit() noexcept {
         std::unique_lock sl(m_mutex);
-        if (!m_rollback_sent) {
-            pg_param_detail commit("COMMIT", 0);
-            auto worker_future = m_executor->SendToWorker(std::move(commit));
-            if (auto result = worker_future.get(); !result) {
-                std::println(stderr, "{}", result.error().to_str());
-            } else {
-                std::println(stdout, "Transaction committed");
-            }
+        if (m_state != state::active) {
+            std::println(stderr, "transaction is not active or rolled back");
+            return;
+        }
+        m_state = state::commit;
+        sl.unlock();
+        pg_param_detail commit("COMMIT", 0);
+        auto commit_future = m_executor->SendToWorker(std::move(commit));
+        if (auto result = commit_future.get(); !result) {
+            std::println(stderr, "{}", result.error().to_str());
         }
     }
 
     void transaction::rollback() noexcept {
         std::unique_lock sl(m_mutex);
-        m_rollback_sent = true;
+        if (m_state != state::active) {
+            return;
+        }
+        m_state = state::rollback;
+        sl.unlock();
         pg_param_detail rollback("ROLLBACK", 0);
         auto rollback_future = m_executor->SendToWorker(std::move(rollback));
         if (auto result = rollback_future.get(); !result) {

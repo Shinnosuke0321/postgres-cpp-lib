@@ -47,7 +47,7 @@ TEST_F(PostgresLibTest, Transaction_Commit) {
         auto r2 = f2.get();
         ASSERT_TRUE(r1) << r1.error().to_str();
         ASSERT_TRUE(r2) << r2.error().to_str();
-        // destructor sends COMMIT (fire-and-forget)
+        txn->commit();
     }
 
     auto after_future = client->execute("SELECT COUNT(*) FROM test_tables");
@@ -172,7 +172,7 @@ TEST_F(PostgresLibTest, Transaction_DestructorAutoCommit) {
     PGClient& client = acquired.value();
 
     // Count rows before
-    auto before_future = client->execute("SELECT COUNT(*) FROM test_tables");
+    auto before_future = client->execute("SELECT * FROM test_tables");
     auto before_result = before_future.get();
     ASSERT_TRUE(before_result) << before_result.error().to_str();
     const size_t rows_before = before_result.value().size();
@@ -196,13 +196,13 @@ TEST_F(PostgresLibTest, Transaction_DestructorAutoCommit) {
             col_text.value(), col_byte.value(),col_ts);
         auto txn_result = txn_future.get();
         ASSERT_TRUE(txn_result) << txn_result.error().to_str();
-        // destructor fires here — fire-and-forget COMMIT
+        txn->commit();
     }
 
     auto after_future = client->execute("SELECT * FROM test_tables");
     auto after_result = after_future.get();
     ASSERT_TRUE(after_result) << after_result.error().to_str();
-    EXPECT_GT(after_result.value().size(), rows_before+1);
+    EXPECT_EQ(after_result.value().size(), rows_before+1);
 }
 
 TEST_F(PostgresLibTest, NestedAsyncQueries_AutoCommitTransaction) {
@@ -225,6 +225,7 @@ TEST_F(PostgresLibTest, NestedAsyncQueries_AutoCommitTransaction) {
             });
         auto result = shared_pms->get_future().get();
         ASSERT_TRUE(result) << result.error().to_str();
+        txn->commit();
     }
 }
 
