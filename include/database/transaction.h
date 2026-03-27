@@ -26,7 +26,7 @@ namespace database {
                 internal::CreateSingleData(std::forward<param>(params))...
             };
             std::unique_lock lock(m_mutex);
-            if (m_rollback_sent) {
+            if (m_state != state::active) {
                 std::promise<std::expected<result::table, sql_error>> p;
                 p.set_value(std::unexpected(sql_error::TransactionRolledBack()));
                 return p.get_future();
@@ -40,7 +40,8 @@ namespace database {
                 internal::CreateSingleData(std::forward<Args>(params))...
             };
             std::unique_lock lock(m_mutex);
-            if (m_rollback_sent) {
+            if (m_state != state::active) {
+                lock.unlock();
                 on_error(sql_error::TransactionRolledBack());
                 return;
             }
@@ -50,11 +51,18 @@ namespace database {
                 std::move(on_error));
         }
 
+        void commit() noexcept;
         void rollback() noexcept; // sends ROLLBACK and waits; marks done
 
     private:
+        enum class state {
+            active, commit, rollback
+        };
+    private:
         std::mutex m_mutex;
         query_executor* m_executor = nullptr;
-        bool m_rollback_sent = false;
+        state m_state = state::active;
     };
+
+    using shared_transaction = std::shared_ptr<transaction>;
 }

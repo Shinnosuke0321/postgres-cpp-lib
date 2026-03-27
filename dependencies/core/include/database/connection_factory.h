@@ -9,6 +9,7 @@
 #include <utility>
 #include "connection.h"
 #include <functional>
+#include <cstring>
 
 namespace Core::Database {
     class ConnectionFactory {

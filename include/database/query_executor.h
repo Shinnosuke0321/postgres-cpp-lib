@@ -17,6 +17,8 @@ namespace database {
     class query_executor {
     public:
         virtual ~query_executor() = default;
+    private:
+        friend class transaction;
         virtual std::future<std::expected<result::table, sql_error>> SendToWorker(pg_param_detail&&) const = 0;
         virtual void EnqueueAsync(pg_param_detail&&, result_callback&&, error_callback&&) const noexcept = 0;
     };

@@ -33,6 +33,11 @@ namespace database {
             m_worker_thread.join();
 
         // Stop all callback workers — all pending callbacks are now in the queue.
+        {
+            std::lock_guard lk(m_temp_cb_mutex);
+            reap_overflow_threads(m_overflow_cb_threads);
+            m_overflow_cb_threads.clear();
+        }
         for (auto& w : m_cb_workers)
             w.request_stop();
         m_cb_cv.notify_all();

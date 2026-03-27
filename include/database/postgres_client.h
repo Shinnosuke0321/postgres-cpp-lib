@@ -6,10 +6,15 @@
 #include <database/connection.h>
 #include <memory>
 #include <libpq-fe.h>
+#include <list>
 #include <utility>
 #include <optional>
 #include <print>
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <sys/poll.h>
+#endif
 #include <random>
 #include <format>
 #include <mutex>
@@ -105,7 +110,8 @@ namespace database {
             query_request(query_request&& other) noexcept
             : detail(std::move(other.detail)),
               on_success(std::move(other.on_success)),
-              on_error(std::move(other.on_error)) {
+              on_error(std::move(other.on_error)),
+              direct_callback(other.direct_callback) {
                 other.on_success = nullptr;
                 other.on_error = nullptr;
             }
@@ -114,6 +120,7 @@ namespace database {
                     detail = std::move(other.detail);
                     on_success = std::move(other.on_success);
                     on_error = std::move(other.on_error);
+                    direct_callback = other.direct_callback;
                     other.on_success = nullptr;
                     other.on_error = nullptr;
                 }
@@ -122,6 +129,22 @@ namespace database {
             query_request(const query_request&) = delete;
             query_request& operator=(const query_request&) = delete;
         };
+
+    private:
+        struct overflow_callback_thread {
+            std::shared_ptr<std::atomic_bool> done;
+            std::jthread thread;
+        };
+
+        static void reap_overflow_threads(std::list<overflow_callback_thread>& threads) noexcept {
+            for (auto it = threads.begin(); it != threads.end();) {
+                if (it->done->load(std::memory_order_acquire)) {
+                    it = threads.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
 
     private:
         std::future<std::expected<result::table, sql_error>> SendToWorker(pg_param_detail&&) const override;
@@ -149,8 +172,11 @@ namespace database {
 
         std::size_t m_num_cb_threads;
         mutable std::mutex m_cb_mutex;
+        mutable std::mutex m_temp_cb_mutex;
         mutable std::condition_variable m_cb_cv;
+        mutable std::atomic_uint32_t m_idle_cb_workers = 0;
         mutable std::deque<std::function<void()>> m_cb_queue;
+        mutable std::list<overflow_callback_thread> m_overflow_cb_threads;
         mutable std::vector<std::jthread> m_cb_workers;
     };
 }
