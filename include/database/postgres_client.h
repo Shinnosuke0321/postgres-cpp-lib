@@ -6,6 +6,7 @@
 #include <database/connection.h>
 #include <memory>
 #include <libpq-fe.h>
+#include <list>
 #include <utility>
 #include <optional>
 #include <print>
@@ -130,6 +131,22 @@ namespace database {
         };
 
     private:
+        struct overflow_callback_thread {
+            std::shared_ptr<std::atomic_bool> done;
+            std::jthread thread;
+        };
+
+        static void reap_overflow_threads(std::list<overflow_callback_thread>& threads) noexcept {
+            for (auto it = threads.begin(); it != threads.end();) {
+                if (it->done->load(std::memory_order_acquire)) {
+                    it = threads.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
+
+    private:
         std::future<std::expected<result::table, sql_error>> SendToWorker(pg_param_detail&&) const override;
         void EnqueueAsync(pg_param_detail&&, result_callback&&, error_callback&&) const noexcept override;
         void QueryWorker(const std::stop_token &st) const noexcept;
@@ -155,8 +172,11 @@ namespace database {
 
         std::size_t m_num_cb_threads;
         mutable std::mutex m_cb_mutex;
+        mutable std::mutex m_temp_cb_mutex;
         mutable std::condition_variable m_cb_cv;
+        mutable std::atomic_uint32_t m_idle_cb_workers = 0;
         mutable std::deque<std::function<void()>> m_cb_queue;
+        mutable std::list<overflow_callback_thread> m_overflow_cb_threads;
         mutable std::vector<std::jthread> m_cb_workers;
     };
 }

@@ -6,10 +6,11 @@
 #define poll WSAPoll
 #endif
 
-namespace {
-    thread_local bool tl_is_callback_thread = false;
+namespace database {
+    namespace {
+        thread_local bool tl_is_callback_thread = false;
+    }
 }
-
 namespace database {
     std::future<std::expected<result::table, sql_error>> postgres_client::SendToWorker(pg_param_detail&& query_detail) const {
         using Result = std::expected<result::table, sql_error>;
@@ -50,6 +51,24 @@ namespace database {
     void postgres_client::PostCallback(std::function<void()> task) const noexcept {
         if (tl_is_callback_thread) {
             task();
+            return;
+        }
+        if (m_idle_cb_workers.load(std::memory_order_acquire) == 0) {
+            auto done = std::make_shared<std::atomic_bool>(false);
+            std::jthread temp([done, task = std::move(task)]() mutable noexcept {
+                tl_is_callback_thread = true;
+                task();
+                done->store(true, std::memory_order_release);
+            });
+
+            {
+                std::lock_guard lk(m_temp_cb_mutex);
+                reap_overflow_threads(m_overflow_cb_threads);
+                m_overflow_cb_threads.push_back({
+                    .done = done,
+                    .thread = std::move(temp)
+                });
+            }
             return;
         }
         {
@@ -139,7 +158,9 @@ namespace database {
             std::function<void()> task;
             {
                 std::unique_lock lk(m_cb_mutex);
+                m_idle_cb_workers.fetch_add(1, std::memory_order_release);
                 m_cb_cv.wait(lk, [&] { return st.stop_requested() || !m_cb_queue.empty(); });
+                m_idle_cb_workers.fetch_sub(1, std::memory_order_release);
                 if (m_cb_queue.empty())
                     break; // stop requested and queue fully drained
                 task = std::move(m_cb_queue.front());
