@@ -63,4 +63,6 @@ namespace database {
         query_executor* m_executor = nullptr;
         state m_state = state::active;
     };
+
+    using shared_transaction = std::shared_ptr<transaction>;
 }
