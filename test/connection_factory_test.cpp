@@ -8,7 +8,7 @@
 #include <thread>
 #include <chrono>
 
-using namespace Core::Database;
+using namespace database;
 
 namespace {
     struct ConnA : IConnection { int tag = 1; };
@@ -33,12 +33,12 @@ TEST_F(ConnectionFactoryTest, CreateAfterRegistration_Succeeds) {
 
 TEST_F(ConnectionFactoryTest, FactoryReturningError_Propagates) {
     factory.register_factory<ConnA>([]() -> ConnectionResult {
-        return std::unexpected(ConnectionError::AuthFailed("bad creds"));
+        RETURN_UNEXPECTED_ERROR(database::connection_error, database::conn_err_types::AuthFailed, "bad creds");
     });
 
     auto result = factory.create_connection<ConnA>();
     ASSERT_FALSE(result.has_value());
-    ASSERT_EQ(result.error().get_code(), ConnectionError::Type::AuthFailed);
+    ASSERT_EQ(result.error().get_code(), database::conn_err_types::AuthFailed);
 }
 
 TEST_F(ConnectionFactoryTest, TwoDistinctTypes_BothWork) {

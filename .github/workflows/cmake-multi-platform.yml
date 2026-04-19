@@ -68,7 +68,6 @@ jobs:
         run: |
           # Install Homebrew
           brew update
-          brew upgrade
           brew install ninja cmake llvm gcc clang-format
 
       # Install Ninja on Linux

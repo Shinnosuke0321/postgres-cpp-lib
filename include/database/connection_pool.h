@@ -15,7 +15,7 @@
 #include "connection_manager.h"
 #include <core/memory/intrusive_ptr.h>
 
-namespace Core::Database {
+namespace database {
     struct PoolConfig {
         std::size_t max_size = std::thread::hardware_concurrency();
         std::size_t init_size = 10;
@@ -27,7 +27,7 @@ namespace Core::Database {
     class ConnectionPool: public core::ref_counted<ConnectionPool<T>> {
     public:
         using SharedFactory = std::shared_ptr<ConnectionFactory>;
-        using AcquireResult = std::expected<ConnectionManager<T>, ConnectionError>;
+        using AcquireResult = std::expected<ConnectionManager<T>, connection_error>;
 
         explicit ConnectionPool(SharedFactory factory, const PoolConfig& opt = PoolConfig()) noexcept;
         ~ConnectionPool() override;

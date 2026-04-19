@@ -10,7 +10,7 @@
 using namespace std::chrono_literals;
 
 namespace {
-    struct FakeConn : Core::Database::IConnection {
+    struct FakeConn : database::IConnection {
         int value = 42;
         ~FakeConn() override {
             assert(value == 42);
@@ -19,16 +19,16 @@ namespace {
 }
 
 TEST(ConnectionPoolTest, PoolTest) {
-    auto factory = std::make_shared<Core::Database::ConnectionFactory>();
+    auto factory = std::make_shared<database::ConnectionFactory>();
 
-    factory->register_factory<FakeConn>([]() -> Core::Database::ConnectionResult {
-        return std::unique_ptr<Core::Database::IConnection>(new FakeConn{});
+    factory->register_factory<FakeConn>([]() -> database::ConnectionResult {
+        return std::unique_ptr<database::IConnection>(new FakeConn{});
     });
 
-    Core::Database::PoolConfig cfg;
+    database::PoolConfig cfg;
     cfg.is_eager = true;
 
-    auto pool = smart_ptr::make_intrusive<Core::Database::ConnectionPool<FakeConn>>(factory, cfg);
+    auto pool = smart_ptr::make_intrusive<database::ConnectionPool<FakeConn>>(factory, cfg);
     pool->wait_for_warmup();
     ASSERT_EQ(pool->ref_count(), 1);
     {
@@ -50,17 +50,17 @@ TEST(ConnectionPoolTest, PoolTest) {
     ASSERT_EQ(pool->ref_count(), 1);
 }
 TEST(ConnectionPoolTest, LazyPool_BasicAcquire) {
-    auto factory = std::make_shared<Core::Database::ConnectionFactory>();
-    factory->register_factory<FakeConn>([]() -> Core::Database::ConnectionResult {
-        return std::unique_ptr<Core::Database::IConnection>(new FakeConn{});
+    auto factory = std::make_shared<database::ConnectionFactory>();
+    factory->register_factory<FakeConn>([]() -> database::ConnectionResult {
+        return std::unique_ptr<database::IConnection>(new FakeConn{});
     });
 
-    Core::Database::PoolConfig cfg;
+    database::PoolConfig cfg;
     cfg.is_eager = false;
     cfg.init_size = 2;
     cfg.max_size = 4;
 
-    auto pool = smart_ptr::make_intrusive<Core::Database::ConnectionPool<FakeConn>>(factory, cfg);
+    auto pool = smart_ptr::make_intrusive<database::ConnectionPool<FakeConn>>(factory, cfg);
     ASSERT_EQ(pool->ref_count(), 1u);
     {
         auto res = pool->acquire();
@@ -73,17 +73,17 @@ TEST(ConnectionPoolTest, LazyPool_BasicAcquire) {
 }
 
 TEST(ConnectionPoolTest, MultipleAcquires_UpToMaxSize) {
-    auto factory = std::make_shared<Core::Database::ConnectionFactory>();
-    factory->register_factory<FakeConn>([]() -> Core::Database::ConnectionResult {
-        return std::unique_ptr<Core::Database::IConnection>(new FakeConn{});
+    auto factory = std::make_shared<database::ConnectionFactory>();
+    factory->register_factory<FakeConn>([]() -> database::ConnectionResult {
+        return std::unique_ptr<database::IConnection>(new FakeConn{});
     });
 
-    Core::Database::PoolConfig cfg;
+    database::PoolConfig cfg;
     cfg.is_eager = false;
     cfg.init_size = 0;
     cfg.max_size = 3;
 
-    auto pool = smart_ptr::make_intrusive<Core::Database::ConnectionPool<FakeConn>>(factory, cfg);
+    auto pool = smart_ptr::make_intrusive<database::ConnectionPool<FakeConn>>(factory, cfg);
     {
         auto r1 = pool->acquire();
         auto r2 = pool->acquire();
@@ -101,17 +101,17 @@ TEST(ConnectionPoolTest, MultipleAcquires_UpToMaxSize) {
 }
 
 TEST(ConnectionPoolTest, TimeoutOnExhaustedPool) {
-    auto factory = std::make_shared<Core::Database::ConnectionFactory>();
-    factory->register_factory<FakeConn>([]() -> Core::Database::ConnectionResult {
-        return std::unique_ptr<Core::Database::IConnection>(new FakeConn{});
+    auto factory = std::make_shared<database::ConnectionFactory>();
+    factory->register_factory<FakeConn>([]() -> database::ConnectionResult {
+        return std::unique_ptr<database::IConnection>(new FakeConn{});
     });
 
-    Core::Database::PoolConfig cfg;
+    database::PoolConfig cfg;
     cfg.is_eager = false;
     cfg.init_size = 0;
     cfg.max_size = 1;
 
-    auto pool = smart_ptr::make_intrusive<Core::Database::ConnectionPool<FakeConn>>(factory, cfg);
+    auto pool = smart_ptr::make_intrusive<database::ConnectionPool<FakeConn>>(factory, cfg);
     auto r1 = pool->acquire();
     ASSERT_TRUE(r1.has_value());
     auto m1 = std::move(r1.value());
@@ -119,7 +119,7 @@ TEST(ConnectionPoolTest, TimeoutOnExhaustedPool) {
     // Pool exhausted; second acquire with zero timeout should return Timeout
     auto r2 = pool->acquire(std::chrono::seconds{0});
     ASSERT_FALSE(r2.has_value());
-    ASSERT_EQ(r2.error().get_code(), Core::Database::ConnectionError::Type::Timeout);
+    ASSERT_EQ(r2.error().get_code(), database::conn_err_types::Timeout);
 }
 
 int main(int argc, char **argv) {
