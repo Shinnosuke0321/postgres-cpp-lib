@@ -11,7 +11,7 @@
 #include <functional>
 #include <cstring>
 
-namespace Core::Database {
+namespace database {
     class ConnectionFactory {
     public:
         explicit ConnectionFactory() = default;
@@ -19,14 +19,14 @@ namespace Core::Database {
         ConnectionFactory(const ConnectionFactory&) = delete;
         ConnectionFactory& operator=(const ConnectionFactory&) = delete;
     public:
-        using CreateConnectionFn = std::function<std::expected<std::unique_ptr<IConnection>, ConnectionError>()>;
+        using CreateConnectionFn = std::function<std::expected<std::unique_ptr<IConnection>, connection_error>()>;
     public:
         template<class T>
         requires std::derived_from<T, IConnection>
         void register_factory(CreateConnectionFn fn) {
             const auto type_id = std::type_index(typeid(T));
-            CreateConnectionFn factory = [fn = std::move(fn)]() mutable -> std::expected<std::unique_ptr<IConnection>, ConnectionError> {
-                std::expected<std::unique_ptr<IConnection>, ConnectionError> res = fn();
+            CreateConnectionFn factory = [fn = std::move(fn)]() mutable -> std::expected<std::unique_ptr<IConnection>, connection_error> {
+                std::expected<std::unique_ptr<IConnection>, connection_error> res = fn();
                 if (!res) {
                     return std::unexpected(res.error());
                 }
@@ -42,7 +42,7 @@ namespace Core::Database {
 
         template<class T>
         requires std::derived_from<T, IConnection>
-        std::expected<std::unique_ptr<T>, ConnectionError> create_connection() {
+        std::expected<std::unique_ptr<T>, connection_error> create_connection() {
             const auto type_id = std::type_index(typeid(T));
 
             CreateConnectionFn factory;
@@ -50,13 +50,14 @@ namespace Core::Database {
                 std::shared_lock lock(m_shared_mutex);
                 const auto it = m_factories.find(type_id);
                 if (it == m_factories.end()) {
-                    char buffer[35] = "No factory registered for type ";
-                    strcat(buffer, type_id.name());
-                    return std::unexpected(ConnectionError::FactoryNotRegistered(buffer));
+                    using namespace core;
+                    using conn_err_types::FactoryNotRegistered;
+                    std::string message = std::format("No factory registered for type {}", type_id.name());
+                    RETURN_UNEXPECTED_ERROR(connection_error, FactoryNotRegistered, std::move(message));
                 };
                 factory = it->second;
             }
-            std::expected<std::unique_ptr<IConnection>, ConnectionError> base_res = factory();
+            std::expected<std::unique_ptr<IConnection>, connection_error> base_res = factory();
             if (!base_res) {
                 return std::unexpected(base_res.error());
             }

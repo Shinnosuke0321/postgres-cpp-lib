@@ -4,7 +4,7 @@
 
 #pragma once
 
-namespace Core::Database {
+namespace database {
 
     template<class T>
     requires std::derived_from<T, IConnection>
@@ -118,7 +118,7 @@ namespace Core::Database {
 
             const auto now = clock::now();
             if (now >= deadline) {
-                return std::unexpected(ConnectionError::Timeout("Timed out waiting for a connection"));
+                RETURN_UNEXPECTED_ERROR(connection_error, conn_err_types::Timeout, "Timed out waiting for a connection");
             }
             const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
 
@@ -135,14 +135,14 @@ namespace Core::Database {
                         return wrap_connection(std::move(conn));
                     }
                 }
-                std::expected<std::unique_ptr<T>, ConnectionError> result = m_factory->create_connection<T>();
+                std::expected<std::unique_ptr<T>, connection_error> result = m_factory->create_connection<T>();
                 if (!result) {
                     m_capacity.release();
                     return std::unexpected(result.error());
                 }
                 return wrap_connection(std::move(result.value()));
             }
-            return std::unexpected(ConnectionError::Timeout("Timed out waiting for a connection"));
+            RETURN_UNEXPECTED_ERROR(connection_error, conn_err_types::Timeout, "Timed out waiting for a connection");
         }
     }
 

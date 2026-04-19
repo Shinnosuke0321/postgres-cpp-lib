@@ -7,6 +7,14 @@
 #include <concepts>
 #include <print>
 
+namespace core {
+    template<class derived>
+    class ref_counted;
+}
+
+template<class T>
+concept intrusive_ref_counted = std::derived_from<T, core::ref_counted<T>>;
+
 namespace smart_ptr {
     template<class T>
     class intrusive_ptr;
@@ -56,11 +64,11 @@ namespace smart_ptr {
     template<class T>
     class intrusive_ptr {
         using U = std::remove_const_t<T>;
-        static_assert(std::derived_from<U, core::ref_counted<U>>, "T must be derived from RefCounted");
     public:
         intrusive_ptr() = default;
 
         explicit intrusive_ptr(T* instance) noexcept: m_ptr(const_cast<U*>(instance)) {
+            static_assert(intrusive_ref_counted<U>, "T must derive from core::ref_counted<T>");
             increment_ref();
         }
         ~intrusive_ptr() { decrement_ref(); }
