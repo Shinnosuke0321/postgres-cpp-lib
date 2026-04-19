@@ -18,6 +18,7 @@ add_executable(PostgresSQL_tests ${test_headers} postgres_query_test.cpp)
 add_executable(Migration_tests ${test_headers} migration_test.cpp)
 add_executable(PostgresError_tests postgres_error_test.cpp)
 add_executable(PostgresTransaction_tests ${test_headers} postgres_transaction_test.cpp)
+add_executable(PostgresCbPool_tests ${test_headers} postgres_cb_pool_test.cpp)
 
 target_link_libraries(SqlParser_tests PRIVATE
         PostgresLib::PostgresLib
@@ -50,9 +51,15 @@ target_link_libraries(PostgresTransaction_tests PRIVATE
         GTest::gtest_main
 )
 
+target_link_libraries(PostgresCbPool_tests PRIVATE
+        PostgresLib::PostgresLib
+        GTest::gtest_main
+)
+
 include(GoogleTest)
 gtest_discover_tests(SqlParser_tests)
 gtest_discover_tests(Migration_tests)
 gtest_discover_tests(PostgresSQL_tests)
 gtest_discover_tests(PostgresError_tests)
 gtest_discover_tests(PostgresTransaction_tests)
+gtest_discover_tests(PostgresCbPool_tests)
