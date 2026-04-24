@@ -3,7 +3,7 @@
 //
 
 #pragma once
-#include <database/internal/type_detail.h>
+#include <postgrescxx/internal/type_detail.h>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace database {
+namespace postgres_cxx {
 
     struct test_row {
         bool col_bool;

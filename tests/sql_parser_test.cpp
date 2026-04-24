@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include <database/internal/sql_parser.h>
+#include <postgrescxx/internal/sql_parser.h>
 
 using database::internal::ParseStatements;
 

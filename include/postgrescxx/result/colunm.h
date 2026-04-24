@@ -10,7 +10,7 @@
 #include <vector>
 #include <postgres_ext.h>
 
-namespace database::result {
+namespace postgres_cxx::result {
     namespace pg_oid {
         constexpr Oid Bool        = 16;
         constexpr Oid Int2        = 21;
@@ -41,10 +41,10 @@ namespace database::result {
 }
 
 
-namespace database::result {
+namespace postgres_cxx::result {
     struct colum {
         colum() = default;
-        colum(const Oid oid, const char* val, const int val_len, const bool is_null) : is_null(is_null), oid(oid) {
+        colum(const Oid oid, const char* val, const int val_len, const bool is_null): is_null(is_null), oid(oid) {
             if (!is_null && val && val_len > 0) {
                 data.resize(val_len);
                 std::memcpy(data.data(), val, val_len);
@@ -64,7 +64,7 @@ namespace database::result {
     };
 }
 
-namespace database::result {
+namespace postgres_cxx::result {
     template<>
     inline std::optional<bool> colum::as<bool>() const {
         if (is_null || data.empty())

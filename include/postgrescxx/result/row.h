@@ -5,7 +5,7 @@
 #pragma once
 #include "colunm.h"
 
-namespace database::result {
+namespace postgres_cxx::result {
     struct row {
         explicit row() = default;
 

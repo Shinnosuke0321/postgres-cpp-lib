@@ -10,7 +10,7 @@
 #include "row.h"
 #include <libpq-fe.h>
 
-namespace database::result {
+namespace postgres_cxx::result {
     struct result_deleter {
         void operator()(PGresult* result) const noexcept {
             if (result)

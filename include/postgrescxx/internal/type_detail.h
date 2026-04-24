@@ -14,7 +14,7 @@
 #include <variant>
 #include <vector>
 
-namespace database {
+namespace postgres_cxx {
     using timestamp = std::chrono::system_clock::time_point;
     using supported_type = std::variant<std::nullptr_t,
                                         bool,
@@ -60,7 +60,7 @@ namespace database {
     };
 }
 
-namespace database::internal {
+namespace postgres_cxx::internal {
     template<class Param>
     constexpr bool IsSupported() noexcept {
         using D = std::decay_t<Param>;
@@ -129,7 +129,7 @@ namespace database::internal {
     }
 }
 
-namespace database::internal {
+namespace postgres_cxx::internal {
 
     // A small helper for std::visit
     template <class... Ts>
