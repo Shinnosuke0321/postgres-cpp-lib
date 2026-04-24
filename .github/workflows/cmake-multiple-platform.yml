@@ -87,25 +87,6 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
-#      - name: Setup PostgreSQL (Linux)
-#        if: runner.os == 'Linux'
-#        run: |
-#          docker compose -f tests/docker/docker-compose.yml up -d
-#          until [ "$(docker inspect --format='{{.State.Health.Status}}' postgres-test-db)" = "healthy" ]; do
-#            echo "Waiting for postgres..."; sleep 2
-#          done
-#          docker exec postgres-test-db psql -U test_user -d test_db \
-#            -f /dev/stdin < tests/docker/init_test_users.sql
-#
-#      - name: Setup PostgreSQL (macOS)
-#        if: runner.os == 'macOS'
-#        run: |
-#          brew services start postgresql@18
-#          sleep 5
-#          psql postgres -c "CREATE USER test_user WITH PASSWORD 'test_password';"
-#          psql postgres -c "CREATE DATABASE test_db OWNER test_user;"
-#          psql -d test_db -f tests/docker/init_test_users.sql
-
       - name: Setup PostgreSQL (Windows, Linux, macOS)
         uses: ikalnytskyi/action-setup-postgres@v8
         id: postgres # Assign an ID to access outputs
