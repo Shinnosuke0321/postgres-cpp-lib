@@ -51,7 +51,7 @@ namespace postgres_cxx {
         }
         return db_url;
     }
-    class client: public postgres_cxx::IConnection, public core::ref_counted<client> {
+    class client: public database::IConnection, public core::ref_counted<client> {
     public:
         explicit client(std::string url) {
             if (auto res = pg_transport::make_transport(std::move(url)); !res) {

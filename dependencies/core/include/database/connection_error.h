@@ -5,7 +5,7 @@
 #include <string_view>
 #include "core/error/base_error.h"
 
-namespace postgres_cxx {
+namespace database {
     enum class conn_err_types {
         ConnectionFailed,
         MissingConfig,
