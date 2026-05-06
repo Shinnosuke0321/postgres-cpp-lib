@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace database::internal {
+namespace postgres_cxx::internal {
     // Parses SQL text into individual statements, stripping -- and /* */ comments.
     // Respects single-quoted string literals so comment markers inside strings are ignored.
     // Whitespace normalisation: any run of spaces/tabs/CR/LF is collapsed to a single

@@ -6,7 +6,7 @@
 #include <memory>
 #include "connection_error.h"
 
-namespace database {
+namespace postgres_cxx {
     struct IConnection {
         virtual ~IConnection() = default;
     };

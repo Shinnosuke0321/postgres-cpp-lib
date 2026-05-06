@@ -30,10 +30,10 @@ protected:
     void TearDown() override {
     }
 
-    std::string valid_url = "postgresql://test_user:test_password@localhost:5432/test_db?sslmode=disable";
-    std::string invalid_url_user = "postgresql://fake_user:test_password@localhost:5432/test_db?sslmode=disable";
-    std::string invalid_url_password = "postgresql://test_user:fake_password@localhost:5432/test_db?sslmode=disable";
-    std::string invalid_url_port = "postgresql://test_user:test_password@localhost:12345/test_db?sslmode=disable";
+    std::string valid_url = "postgresql://test_user:test_password@localhost:5432/lego?sslmode=disable";
+    std::string invalid_url_user = "postgresql://fake_user:test_password@localhost:5432/lego?sslmode=disable";
+    std::string invalid_url_password = "postgresql://test_user:fake_password@localhost:5432/lego?sslmode=disable";
+    std::string invalid_url_port = "postgresql://test_user:test_password@localhost:12345/lego?sslmode=disable";
     std::string invalid_url_db = "postgresql://test_user:test_password@localhost:5432/fake_db?sslmode=disable";
-    std::string invalid_url_host = "postgresql://test_user:test_password@fake_host:5432/test_db?sslmode=disable";
+    std::string invalid_url_host = "postgresql://test_user:test_password@fake_host:5432/lego?sslmode=disable";
 };

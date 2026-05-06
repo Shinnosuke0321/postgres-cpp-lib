@@ -7,7 +7,6 @@
 #include <chrono>
 #include <cstring>
 #include <iomanip>
-#include <print>
 #include <string>
 #include <type_traits>
 #include <span>
@@ -23,41 +22,6 @@ namespace postgres_cxx {
                                         const char*, char*, std::string,
                                         std::vector<std::byte>,
                                         timestamp>;
-
-    struct pg_param_detail {
-        std::string query;
-        std::vector<std::string> text;      // size == n; empty string for NULL
-        std::vector<const char*> buffers;    // size == n; nullptr for NULL
-        std::vector<int> lengths;           // size == n
-        std::vector<int> formats;           // size == n (all 0)
-
-        pg_param_detail() = default;
-        explicit pg_param_detail(const std::string_view query, const std::size_t n)
-        : query(std::string{query}), text(n), buffers(n, nullptr), lengths(n, 0), formats(n, 0) {}
-
-        [[nodiscard]] int count() const noexcept { return static_cast<int>(buffers.size()); }
-
-        pg_param_detail (const pg_param_detail&) = delete;
-        pg_param_detail& operator=(const pg_param_detail&) = delete;
-
-        pg_param_detail(pg_param_detail&& other) noexcept
-        : query(std::move(other.query)),
-          text(std::move(other.text)),
-          buffers(std::move(other.buffers)),
-          lengths(std::move(other.lengths)),
-          formats(std::move(other.formats)) {}
-
-        pg_param_detail& operator=(pg_param_detail&& other) noexcept {
-            if (this != &other) {
-                query = std::move(other.query);
-                text = std::move(other.text);
-                buffers = std::move(other.buffers);
-                lengths = std::move(other.lengths);
-                formats = std::move(other.formats);
-            }
-            return *this;
-        }
-    };
 }
 
 namespace postgres_cxx::internal {
@@ -252,31 +216,4 @@ namespace postgres_cxx::internal {
             }
         }, v);
     }
-
-    inline pg_param_detail MakePgParamBuffer(const std::string_view query, const std::span<const supported_type> params)
-    {
-        pg_param_detail out(query, params.size());
-
-        for (std::size_t i = 0; i < params.size(); ++i) {
-            out.formats[i] = 1; // binary format for all params
-            if (std::holds_alternative<std::nullptr_t>(params[i])) {
-                out.buffers[i] = nullptr; // SQL NULL — length and format are ignored by libpq
-                out.lengths[i] = 0;
-                continue;
-            }
-
-            out.text[i]     = ToBinary(params[i]);
-            out.buffers[i]  = out.text[i].data();
-            out.lengths[i]  = static_cast<int>(out.text[i].size());
-        }
-
-        return out;
-    }
-
-    template <std::size_t N>
-    pg_param_detail MakePgParamBuffer(const std::string_view query, const std::array<supported_type, N>& params)
-    {
-        return MakePgParamBuffer(query,std::span<const supported_type>(params.data(), params.size()));
-    }
-
 } // namespace Database::internal

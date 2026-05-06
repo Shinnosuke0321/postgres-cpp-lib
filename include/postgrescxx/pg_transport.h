@@ -3,71 +3,72 @@
 //
 
 #pragma once
+#include <algorithm>
 #include <functional>
-#include <libpq-fe.h>
+#include <memory>
+#include <utility>
 #include <core/memory/intrusive_ptr.h>
 #include "error/pg_exception.h"
 #include "event/event_loop_executor.h"
-#include "result/table.h"
+#include "internal/query_detail.h"
+#include "actor/query_executor.h"
+#include "actor/pg_connector.h"
 
 namespace postgres_cxx {
-    struct pg_conn_deleter {
-        void operator()(PGconn* conn) const noexcept {
-            if (conn) {
-                PQfinish(conn);
-            }
-        }
-    };
     class pg_transport: public core::ref_counted<pg_transport> {
         using conn_callback_t = std::function<void(std::expected<void, error::pg_exception>)>;
+        using query_callback_t = std::function<void(std::expected<result::table, error::pg_exception>)>;
     public:
-        pg_transport(): m_exe(smart_ptr::make_intrusive<event_loop_executor>()) {}
+        static std::expected<smart_ptr::intrusive_ptr<pg_transport>, error::pg_exception> make_transport(std::string url) noexcept {
+            auto event_loop = event_loop_executor::run_loop();
+            if (!event_loop)
+                return std::unexpected(std::move(event_loop.error()));
+            auto& [ev_loop, ev_ctx] = event_loop.value();
+            pg_connector connector{std::move(url), ev_ctx->intrusive_from_this()};
+            query_executor executor{ev_ctx->intrusive_from_this()};
+            return smart_ptr::intrusive_ptr(new pg_transport(std::move(ev_loop), std::move(connector), std::move(executor)));
+        }
+    public:
+        ~pg_transport() noexcept override = default;
 
-        void connect_async(std::string url, conn_callback_t cb) noexcept {
-
-            if (auto init_res = m_exe->init(); !init_res) {
-                cb(std::unexpected(std::move(init_res.error())));
-                return;
-            }
-
+        void connect_async(conn_callback_t cb) noexcept {
             auto self = this->intrusive_from_this();
-            m_exe->post([self, url = std::move(url), cb = std::move(cb)] mutable {
-                self->handle_connect(std::move(url), std::move(cb));
+            m_exe->post([self, cb = std::move(cb)] mutable {
+                self->m_connector.start([self, cb = std::move(cb)](pg_connector::connection_result res) mutable  {
+                    if (res) {
+                        self->m_query_executor.set_ctx(std::move(*res));
+                        cb({});
+                    } else {
+                        cb(std::unexpected(std::move(res.error())));
+                    }
+                });
             });
         }
 
-        ~pg_transport() noexcept override {
-            cleanup();
+        bool check_connection() noexcept {
+            return m_connector.is_connected();
+        }
+
+        void send_query_async(std::shared_ptr<pg_param_detail> detail, query_callback_t&& query_cb) noexcept {
+            auto self = this->intrusive_from_this();
+            m_exe->post([self, detail = std::move(detail), query_cb = std::move(query_cb)] mutable {
+                if (!self->m_connector.is_connected()) {
+                    query_cb(MAKE_UNEXPECTED_ERROR(error::pg_exception, error::types::QueryFailed, "not connected"));
+                    return;
+                }
+                self->m_query_executor.run_query(detail,std::move(query_cb));
+            });
         }
 
     private:
-        void handle_connect(std::string&& url, conn_callback_t&& cb) noexcept;
-        void notify_error_all(error::pg_exception error) noexcept;
-        void notify_success_all() noexcept;
-        static void on_write_cb(evutil_socket_t fd, short events, void* priv) noexcept;
-        static void on_read_cb(evutil_socket_t fd, short events, void* priv) noexcept;
-        void poll_connection() noexcept;
-        void reset_events() noexcept;
-        void on_write_event() noexcept;
-        void on_read_event() noexcept;
-        void handle_read() noexcept;
-        void handle_write() noexcept;
-        void cleanup() noexcept;
-    private:
-        enum class state {
-            disconnected,
-            connecting,
-            connected,
-            busy,
-            closing
-        };
+        explicit pg_transport(smart_ptr::intrusive_ptr<event_loop_executor> ev_loop, pg_connector connector, query_executor executor)
+        : m_exe(std::move(ev_loop)),
+          m_connector(std::move(connector)),
+          m_query_executor(std::move(executor)) {};
 
     private:
-        state m_state = state::disconnected;
-        std::queue<conn_callback_t> m_conn_waters;
-        event* m_write_ev = nullptr;
-        event* m_read_ev = nullptr;
-        std::unique_ptr<PGconn, pg_conn_deleter> m_conn;
         smart_ptr::intrusive_ptr<event_loop_executor> m_exe;
+        pg_connector m_connector;
+        query_executor m_query_executor;
     };
 }

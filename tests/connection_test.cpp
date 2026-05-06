@@ -6,46 +6,60 @@
 #include "gtest/postgres_lib_test.h"
 
 TEST_F(DbConnectionTest, ConnectionMadeSuccessfully) {
-    const postgres_cxx::client client(valid_url);
+    postgres_cxx::client client(valid_url);
     const auto connected = client.connect();
     ASSERT_TRUE(connected);
 }
 
 TEST_F(DbConnectionTest, ConnectingWithWrongUser) {
-    const postgres_cxx::client client(invalid_url_user);
+    postgres_cxx::client client(invalid_url_user);
     const auto connected = client.connect();
     ASSERT_FALSE(connected);
     std::println("{}", connected.error().to_what());
 }
 
 TEST_F(DbConnectionTest, ConnectingWithWrongPassword) {
-    const postgres_cxx::client client(invalid_url_password);
+    postgres_cxx::client client(invalid_url_password);
     const auto connected = client.connect();
     ASSERT_FALSE(connected);
     std::println("{}", connected.error().to_what());
 }
 
 TEST_F(DbConnectionTest, ConnectingWithWrongPort) {
-    const postgres_cxx::client client(invalid_url_port);
+    postgres_cxx::client client(invalid_url_port);
     const auto connected = client.connect();
     ASSERT_FALSE(connected);
     std::println("{}", connected.error().to_what());
 }
 
 TEST_F(DbConnectionTest, ConnectingWithWrongDb) {
-    const postgres_cxx::client client(invalid_url_db);
+    postgres_cxx::client client(invalid_url_db);
     const auto connected = client.connect();
     ASSERT_FALSE(connected);
     std::println("{}", connected.error().to_what());
 }
 
 TEST_F(DbConnectionTest, ConnectingWithWrongHost) {
-    const postgres_cxx::client client(invalid_url_host);
+    postgres_cxx::client client(invalid_url_host);
     const auto connected = client.connect();
     ASSERT_FALSE(connected);
     std::println("{}", connected.error().to_what());
 }
 
+TEST_F(DbConnectionTest, CallingConnectCausesNoCrash) {
+    constexpr size_t num = 1000;
+    std::vector<std::jthread> threads(num);
+    postgres_cxx::client client(valid_url);
+    for (auto& t : threads) {
+        t = std::jthread([&client] {
+            const auto connected = client.connect();
+            ASSERT_TRUE(client.is_connected());
+        });
+    }
+    for (auto& t : threads)
+        if (t.joinable())
+            t.join();
+}
 
 int main(int argc, char *argv[]) {
     testing::InitGoogleTest(&argc, argv);

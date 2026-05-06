@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.26)
+cmake_minimum_required(VERSION 3.10)
 project(postgresql-cpp-driver VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
@@ -11,6 +11,8 @@ set(SOURCES
         src/client_pub.cpp
         src/transaction.cpp
         src/pg_transport.cpp
+        src/query_executor.cpp
+        src/pg_connector.cpp
 )
 
 if (BUILD_SHARED_LIBS)
@@ -71,6 +73,15 @@ install(TARGETS postgresql-cpp-driver DbConnectionPool
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+if (NOT Libevent_FOUND)
+    install(TARGETS event_core event_extra event_pthreads
+            EXPORT PostgresDriverLibTarget
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif ()
 
 install(DIRECTORY include/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}

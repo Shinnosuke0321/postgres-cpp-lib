@@ -15,8 +15,5 @@ docker compose pull
 echo "Starting postgres"
 docker compose up -d
 
-echo "Waiting for postgres to start"
-sleep 3
-
 echo "Logging"
 docker compose logs postgres

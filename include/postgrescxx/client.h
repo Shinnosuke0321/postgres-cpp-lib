@@ -4,11 +4,9 @@
 
 #pragma once
 #include <memory>
-#include <libpq-fe.h>
 #include <list>
 #include <utility>
 #include <optional>
-#include <print>
 #include "core/memory/intrusive_ptr.h"
 #include "database/connection.h"
 #include "internal/type_detail.h"
@@ -53,44 +51,54 @@ namespace postgres_cxx {
         }
         return db_url;
     }
-
-    struct conn_deleter {
-        void operator()(PGconn* conn) const noexcept {
-            if (conn) {
-                PQfinish(conn);
-            }
-        }
-    };
-    using unique_pg_conn = std::unique_ptr<PGconn, conn_deleter>;
-
-    class client : public database::IConnection, public core::ref_counted<client> {
+    class client: public postgres_cxx::IConnection, public core::ref_counted<client> {
     public:
-        explicit client(std::string uri): m_uri(std::move(uri)), m_transport_ptr(smart_ptr::make_intrusive<pg_transport>()) {};
-        ~client() override = default;
-
+        explicit client(std::string url) {
+            if (auto res = pg_transport::make_transport(std::move(url)); !res) {
+                m_init_err.emplace(std::move(res.error()));
+            } else {
+                m_transport_ptr = std::move(*res);
+            }
+        };
         client() = default;
-        client(const client&) = delete;
-        client& operator=(const client&) = delete;
-        client(client&& other) noexcept = delete;
-        client& operator=(client&& other) noexcept = delete;
-
+        ~client() override = default;
         std::expected<void, core::error::exception> connect() const noexcept;
         bool is_connected() const noexcept;
 
-        // std::shared_ptr<transaction> create_transaction();
-
         template<typename... Args>
-        std::future<std::expected<result::table, error::pg_exception>> execute(std::string_view query, Args&& ...params) const {
-            pg_param_detail pg_param_buffer = internal::MakePgParamBuffer(query, std::forward_as_tuple(std::forward<Args>(params)...));
+        std::future<std::expected<result::table, error::pg_exception>> execute(const std::string_view query, Args&& ...params) const {
+            auto promise = std::make_shared<std::promise<std::expected<result::table, error::pg_exception>>>();
+            auto fut = promise->get_future();
+            std::array<supported_type, sizeof...(Args)> param_array{std::forward<Args>(params)...};
+            m_transport_ptr->send_query_async(std::make_shared<pg_param_detail>(query, param_array), [promise](std::expected<result::table, error::pg_exception> res) {
+                if (res) {
+                    promise->set_value(std::move(res.value()));
+                } else {
+                    promise->set_value(std::unexpected(std::move(res.error())));
+                }
+            });
+            return fut;
         }
 
-        // template<typename... Params>
-        // void execute_async(std::string_view query, result_callback callback, error_callback err_callback, Params&& ...params) const noexcept {
-        //
-        // }
+        template<typename... Args>
+        void execute(const std::string_view query, std::function<void(result::table)>&& success_cb, std::function<void(error::pg_exception)>&& error_cb, Args&& ...params) const {
+            std::array<supported_type, sizeof...(Args)> param_array{std::forward<Args>(params)...};
+            m_transport_ptr->send_query_async(std::make_shared<pg_param_detail>(query, param_array), [success_cb = std::move(success_cb), error_cb = std::move(error_cb)](std::expected<result::table, error::pg_exception> res) {
+                if (res) {
+                    success_cb(std::move(res.value()));
+                } else {
+                    error_cb(std::move(res.error()));
+                }
+            });
+        }
+
+    public:
+        COPY_SEMANTICS(client, delete);
+        client(client&& other) noexcept = delete;
+        client& operator=(client&& other) noexcept = delete;
 
     private:
-        std::string m_uri;
+        std::optional<error::pg_exception> m_init_err = std::nullopt;
         smart_ptr::intrusive_ptr<pg_transport> m_transport_ptr;
     };
 }

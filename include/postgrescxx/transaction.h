@@ -3,14 +3,9 @@
 //
 
 #pragma once
-#include <future>
-#include <expected>
-#include <array>
-#include "pg_transport.h"
-#include "internal/type_detail.h"
 
-namespace database {
+namespace postgres_cxx {
     class transaction {
-        public:
+    public:
     };
 }

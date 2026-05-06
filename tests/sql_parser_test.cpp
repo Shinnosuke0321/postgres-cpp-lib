@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <postgrescxx/internal/sql_parser.h>
 
-using database::internal::ParseStatements;
+using postgres_cxx::internal::ParseStatements;
 
 class ParserTest : public testing::Test {
 protected:
