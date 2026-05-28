@@ -8,6 +8,7 @@
 #include <memory>
 #include <utility>
 #include <core/memory/intrusive_ptr.h>
+#include "transaction.h"
 #include "error/pg_exception.h"
 #include "event/event_loop_executor.h"
 #include "internal/query_detail.h"
@@ -29,42 +30,13 @@ namespace postgres_cxx {
             return smart_ptr::intrusive_ptr(new pg_transport(std::move(ev_loop), std::move(connector), std::move(executor)));
         }
     public:
+        void connect_async(conn_callback_t cb) noexcept;
+        bool check_connection() noexcept;
+        void send_query_async(pg_param_detail detail, query_callback_t&& query_cb) noexcept;
+        void make_transaction(std::function<void(std::expected<transaction, error::pg_exception>)>&& on_transaction_created) noexcept;
         ~pg_transport() noexcept override = default;
-
-        void connect_async(conn_callback_t cb) noexcept {
-            auto self = this->intrusive_from_this();
-            m_exe->post([self, cb = std::move(cb)] mutable {
-                self->m_connector.start([self, cb = std::move(cb)](pg_connector::connection_result res) mutable  {
-                    if (res) {
-                        self->m_query_executor.set_ctx(std::move(*res));
-                        cb({});
-                    } else {
-                        cb(std::unexpected(std::move(res.error())));
-                    }
-                });
-            });
-        }
-
-        bool check_connection() noexcept {
-            return m_connector.is_connected();
-        }
-
-        void send_query_async(std::shared_ptr<pg_param_detail> detail, query_callback_t&& query_cb) noexcept {
-            auto self = this->intrusive_from_this();
-            m_exe->post([self, detail = std::move(detail), query_cb = std::move(query_cb)] mutable {
-                if (!self->m_connector.is_connected()) {
-                    query_cb(MAKE_UNEXPECTED_ERROR(error::pg_exception, error::types::QueryFailed, "not connected"));
-                    return;
-                }
-                self->m_query_executor.run_query(detail,std::move(query_cb));
-            });
-        }
-
     private:
-        explicit pg_transport(smart_ptr::intrusive_ptr<event_loop_executor> ev_loop, pg_connector connector, query_executor executor)
-        : m_exe(std::move(ev_loop)),
-          m_connector(std::move(connector)),
-          m_query_executor(std::move(executor)) {};
+        explicit pg_transport(smart_ptr::intrusive_ptr<event_loop_executor> ev_loop, pg_connector connector, query_executor executor);
 
     private:
         smart_ptr::intrusive_ptr<event_loop_executor> m_exe;

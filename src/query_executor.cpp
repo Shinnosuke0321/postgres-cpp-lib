@@ -55,13 +55,13 @@ namespace postgres_cxx {
         }
     }
 
-    void query_executor::run_query(const std::shared_ptr<pg_param_detail>& detail, on_result_t on_result) noexcept {
+    void query_executor::run_query(pg_param_detail detail, on_result_t on_result) noexcept {
         m_res_cbs = std::move(on_result);
-        const std::string_view query = detail->command();
-        const int n_params = detail->count();
-        const char** param_vals = detail->param_values();
-        const int* param_lens = detail->param_lengths();
-        const int* param_formats = detail->param_formats();
+        const std::string_view query = detail.command();
+        const int n_params = detail.count();
+        const char** param_vals = detail.param_values();
+        const int* param_lens = detail.param_lengths();
+        const int* param_formats = detail.param_formats();
 
         if (!PQsendQueryParams(m_postgres_ctx->raw_conn(),query.data(),n_params,nullptr,param_vals,param_lens,param_formats,1)) {
             notify_error(CREATE_ERROR(pg_exception, QueryFailed, PQerrorMessage(m_postgres_ctx->raw_conn())));

@@ -7,6 +7,7 @@
 #include <list>
 #include <utility>
 #include <optional>
+#include "transaction.h"
 #include "core/memory/intrusive_ptr.h"
 #include "database/connection.h"
 #include "internal/type_detail.h"
@@ -83,7 +84,7 @@ namespace postgres_cxx {
         template<typename... Args>
         void execute(const std::string_view query, std::function<void(result::table)>&& success_cb, std::function<void(error::pg_exception)>&& error_cb, Args&& ...params) const {
             std::array<supported_type, sizeof...(Args)> param_array{std::forward<Args>(params)...};
-            m_transport_ptr->send_query_async(std::make_shared<pg_param_detail>(query, param_array), [success_cb = std::move(success_cb), error_cb = std::move(error_cb)](std::expected<result::table, error::pg_exception> res) {
+            m_transport_ptr->send_query_async(pg_param_detail(query, param_array), [success_cb = std::move(success_cb), error_cb = std::move(error_cb)](std::expected<result::table, error::pg_exception> res) {
                 if (res) {
                     success_cb(std::move(res.value()));
                 } else {
@@ -91,6 +92,8 @@ namespace postgres_cxx {
                 }
             });
         }
+
+        std::future<std::expected<transaction, error::pg_exception>> begin_transaction() const noexcept;
 
     public:
         COPY_SEMANTICS(client, delete);

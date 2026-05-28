@@ -36,6 +36,7 @@ if (NOT Libevent_FOUND)
         set(EVENT__MSVC_STATIC_RUNTIME ON CACHE BOOL "" FORCE)
     endif ()
 
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
     FetchContent_MakeAvailable(libevent)
 endif ()
 

@@ -25,4 +25,13 @@ namespace postgres_cxx {
     bool client::is_connected() const noexcept {
         return m_transport_ptr->check_connection();
     }
+
+    std::future<std::expected<transaction, error::pg_exception>> client::begin_transaction() const noexcept {
+        auto prom = std::make_shared<std::promise<std::expected<transaction, error::pg_exception>>>();
+        auto fut = prom->get_future();
+        m_transport_ptr->make_transaction([prom](std::expected<transaction, error::pg_exception> txn) {
+            prom->set_value(std::move(txn));
+        });
+        return fut;
+    }
 }
